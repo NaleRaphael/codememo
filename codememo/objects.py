@@ -32,12 +32,14 @@ class RelativeLineInfo(LineInfo):
 
 class Code(object):
     """Container of code, including lines """
-    __slots__ = ('content', 'line_start', 'lang', 'path', 'url')
+    __slots__ = ('name', 'content', 'line_start', 'lang', 'path', 'url')
 
-    def __init__(self, content, line_start=None, lang=None, path=None, url=None):
+    def __init__(self, name, content, line_start=None, lang=None, path=None, url=None):
         """
         Parameters
         ----------
+        name : str
+            Name of this code snippet.
         content : str
             Code snippet.
         line_start : int, optional
@@ -50,6 +52,7 @@ class Code(object):
         url : str, optional
             An URL indicating the source of this code snippet.
         """
+        self.name = name
         self.content = content
         self.lang = 'raw' if lang is None else lang
         self.path = path
