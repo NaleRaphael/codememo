@@ -277,6 +277,8 @@ class CodeNodeViewer(ImguiComponent):
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
 
+        self.opened = False
+
     def reset_hovered_id_cache(self):
         self.id_hovered_in_list = -1
         self.id_hovered_in_scene = -1
@@ -428,9 +430,33 @@ class CodeNodeViewer(ImguiComponent):
 
         imgui.end_group()
 
+    def display_menu_bar(self):
+        imgui.begin_menu_bar()
+        if imgui.begin_menu('File'):
+            imgui.menu_item('Save', 'Ctrl+S')
+            clicked, selected = imgui.menu_item('Quit')
+            if clicked:
+                self.close()
+            imgui.end_menu()
+        imgui.end_menu_bar()
+
+    def close(self):
+        """Let host application know that this component is going to be closed,
+        and clear references to this object in order to release memory."""
+        self.app.remove_component(self)
+        self.nodes = []
+        self.links = []
+        self.app = None
+
     def render(self):
-        imgui.begin('CodeNodeViewer')
+        _, self.opened = imgui.begin('CodeNodeViewer', closable=True, flags=imgui.WINDOW_MENU_BAR)
+        if not self.opened:
+            imgui.end()
+            self.close()
+            return
+
         imgui.set_window_size(600, 400)
+        self.display_menu_bar()
         self.draw_node_list()
         imgui.same_line()
         self.draw_node_canvas()

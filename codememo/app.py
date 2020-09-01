@@ -26,6 +26,8 @@ class Application(object):
         self.init_components()
         self.init_draw_process()
 
+        self._removed_components = []
+
     def init_components(self):
         self.imgui_components = [
             MenuBar(self),
@@ -48,6 +50,7 @@ class Application(object):
             self.window.clear()
             imgui.render()
             self.imgui_impl.render(imgui.get_draw_data())
+            self.finalize()
 
         # NOTE: Avoid closing application when ESCAPE is pressed
         # ref: https://stackoverflow.com/a/3205391
@@ -61,6 +64,15 @@ class Application(object):
         if not isinstance(component, ImguiComponent):
             raise TypeError(f'should be an instance of {ImguiComponent}')
         self.imgui_components.append(component)
+
+    def remove_component(self, component):
+        idx = self.imgui_components.index(component)
+        self._removed_components.append(self.imgui_components.pop(idx))
+
+    def finalize(self):
+        while self._removed_components:
+            comp = self._removed_components.pop()
+            del comp
 
     def run(self):
         pyglet.app.run()
