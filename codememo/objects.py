@@ -1,9 +1,9 @@
 
-__all__ = ['LineInfo', 'Code', 'ReferenceInfo', 'Node']
+__all__ = ['LineInfo', 'Snippet', 'ReferenceInfo', 'Node', 'NodeCollection']
 
 
 class LineInfo(object):
-    """Information of the start and stop line number of code."""
+    """Information of the start and stop line number of a code snippet."""
     __slots__ = ('start', 'stop')
 
     def __init__(self, start, stop=None):
@@ -30,8 +30,8 @@ class RelativeLineInfo(LineInfo):
     pass
 
 
-class Code(object):
-    """Container of code, including lines """
+class Snippet(object):
+    """Container of a code snippet."""
     __slots__ = ('name', 'content', 'line_start', 'lang', 'path', 'url')
 
     def __init__(self, name, content, line_start=None, lang=None, path=None, url=None):
@@ -70,52 +70,51 @@ class Code(object):
 
 class ReferenceInfo(object):
     """Information of the source which a code snippet should point to."""
-    def __init__(self, src_code, rel_start, rel_stop=None):
+    def __init__(self, src, ref_start, ref_stop=None):
         """
         Parameters
         ----------
-        src_code : Code
+        src : snippet
             A code snippet as the source.
-        start : int
-            Start line of the source code
+        ref_start : int
+            Start line of the reference.
+        ref_stop : int
+            Stop line of the reference.
         """
-        self.code = src_code
-        self.line_info = RelativeLineInfo(rel_start, stop=rel_stop)
+        self.src = src
+        self.line_info = RelativeLineInfo(ref_start, stop=ref_stop)
 
 
 class Node(object):
-    def __init__(self, code, comment=None, root=None, leaves=None):
+    def __init__(self, snippet, comment=None, leaves=None):
         """
         Parameters
         ----------
-        code : Code
+        snippet : Snippet
             An object containing information of code snippet.
         comment : str, optional
             Comment/note of given code snippet.
-        root : RootNode, optional
-            Source of code snippet in this node should point to.
         leaves : list of Node, optional
             Nodes that related to this code snippet.
         """
-        if not isinstance(code, Code):
-            raise TypeError(f'should be an instance of {Code}')
-        if not isinstance(ref_info, ReferenceInfo):
-            raise TypeError(f'should be an instance of {LineInfo}')
+        if not isinstance(snippet, Snippet):
+            raise TypeError(f'should be an instance of {Snippet}')
 
         self._ref_info = None
-        self.code = code
+        self.snippet = snippet
         self.comment = comment
 
         self.root = None
         self.leaves = []
 
-        if root is not None:
-            self.set_root(root)
         if leaves is not None:
             if not isinstance(leaves, list):
                 raise TypeError(f'should be a list')
             for v in leaves:
                 self.add_leaf(v)
+
+    def __repr__(self):
+        return f'<Node "{self.snippet.name}">'
 
     @property
     def ref_info(self):
@@ -127,28 +126,64 @@ class Node(object):
             raise TypeError(f'should be an instance of {ReferenceInfo}')
         self._ref_info = value
 
-    def set_root(self, node, rel_start, rel_stop=None):
-        if node and not isinstance(node, RootNode):
-            raise TypeError(f'should be an instance of {RootNode}')
+    def set_root(self, node, ref_start, ref_stop=None):
+        if node and not isinstance(node, Node):
+            raise TypeError(f'should be an instance of {Node}')
         self.root = node
         self.ref_info = ReferenceInfo(
-            node.code, rel_start, rel_stop=rel_stop
+            node.snippet, ref_start, ref_stop=ref_stop
         )
 
     def reset_root(self):
         self.root = None
         self.ref_info = None
 
-    def add_leaf(self, node, line_start, line_stop=None):
+    def add_leaf(self, node, ref_start=1, ref_stop=None):
         if not isinstance(node, Node):
             raise TypeError(f'should be an instance of {Node}')
-        if node.root is not None:
-            msg = ('Given node is already an leaf of other node. You need '
-            'to reset its root node first.')
+        n_lines = node.snippet.n_lines
+        if ref_start < 1 or ref_start > n_lines:
+            msg = f'Reference of start line should be in the range of [1, {n_lines}]'
             raise ValueError(msg)
-        node.set_root(self, line_start, line_stop=line_stop)
+        if ref_stop and ref_stop > node.snippet.n_lines:
+            msg = f'Reference of stop line should be in the range of [1, {n_lines}]'
+            raise ValueError(msg)
+        if node.root is not None:
+            msg = ('Multiple root: Given node is already an leaf of other node.'
+            ' You need to reset its root node first.')
+            raise ValueError(msg)
+        if node is self:
+            msg = 'Self reference: given leaf node is this node itself'
+            raise ValueError(msg)
+        if node is self.root:
+            msg = 'Circular reference: given node is already the root of this node'
+            raise ValueError(msg)
+        node.set_root(self, ref_start, ref_stop=ref_stop)
         self.leaves.append(node)
 
     def remove_leaf(self, idx):
         node = self.leaves.pop(idx)
         node.reset_root()
+
+
+class NodeLink(object):
+    def __init__(self, src, src_slot, tgt, tgt_slot):
+        self.src = src
+        self.src_slot = src_slot
+        self.tgt = tgt
+        self.tgt_slot = tgt_slot
+
+    def __repr__(self):
+        return f'<NodeLink source: {self.src}; target_{self.tgt_slot}: {self.tgt}>'
+
+
+class NodeCollection(object):
+    def __init__(self, nodes):
+        self.nodes = nodes
+
+    def resolve_links(self):
+        links = []
+        for node in self.nodes:
+            for i, leaf in enumerate(node.leaves):
+                links.append(NodeLink(node, 0, leaf, i))
+        return links
