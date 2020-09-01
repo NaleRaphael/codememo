@@ -167,14 +167,57 @@ class Node(object):
 
 
 class NodeLink(object):
-    def __init__(self, src, src_slot, tgt, tgt_slot):
-        self.src = src
-        self.src_slot = src_slot
-        self.tgt = tgt
-        self.tgt_slot = tgt_slot
+    """A link indicates the relation between root and leaf node."""
+    def __init__(self, root, root_slot, leaf, leaf_slot):
+        if not isinstance(root, Node):
+            raise TypeError(f'expected type: {Node}, got {type(root)}')
+        if not isinstance(root_slot, int):
+            raise TypeError(f'expected type: {int}, got {type(root_slot)}')
+        if not isinstance(leaf, Node):
+            raise TypeError(f'expected type: {Node}, got {type(leaf)}')
+        if not isinstance(leaf_slot, int):
+            raise TypeError(f'expected type: {int}, got {type(leaf_slot)}')
+
+        self.root = root
+        self.root_slot = root_slot
+        self.leaf = leaf
+        self.leaf_slot = leaf_slot
+
+    def __eq__(self, val):
+        return all([
+            getattr(self, name) == getattr(val, name)
+            for name in ['root', 'root_slot', 'leaf', 'leaf_slot']
+        ])
 
     def __repr__(self):
-        return f'<NodeLink source: {self.src}; target_{self.tgt_slot}: {self.tgt}>'
+        return f'<NodeLink root: {self.root}; leaf_{self.leaf_slot}: {self.leaf}>'
+
+
+class NodeIndexLink(object):
+    """A link indicates the relation between root and leaf node by their index."""
+    def __init__(self, root_idx, root_slot, leaf_idx, leaf_slot):
+        if not isinstance(root_idx, int):
+            raise TypeError(f'expected type: {int}, got {type(root_idx)}')
+        if not isinstance(root_slot, int):
+            raise TypeError(f'expected type: {int}, got {type(root_slot)}')
+        if not isinstance(leaf_idx, int):
+            raise TypeError(f'expected type: {int}, got {type(leaf_idx)}')
+        if not isinstance(leaf_slot, int):
+            raise TypeError(f'expected type: {int}, got {type(leaf_slot)}')
+
+        self.root_idx = root_idx
+        self.root_slot = root_slot
+        self.leaf_idx = leaf_idx
+        self.leaf_slot = leaf_slot
+
+    def __eq__(self, val):
+        return all([
+            getattr(self, name) == getattr(val, name)
+            for name in ['root_idx', 'root_slot', 'leaf_idx', 'leaf_slot']
+        ])
+
+    def __repr__(self):
+        return f'<NodeIndexLink root: {self.root_idx}; leaf_{self.leaf_slot}: {self.leaf_idx}>'
 
 
 class NodeCollection(object):
@@ -182,8 +225,65 @@ class NodeCollection(object):
         self.nodes = nodes
 
     def resolve_links(self):
+        """Returns list of `NodeLink` objects."""
         links = []
         for node in self.nodes:
             for i, leaf in enumerate(node.leaves):
                 links.append(NodeLink(node, 0, leaf, i))
         return links
+
+    def resolve_index_links(self):
+        """Returns list of `NodeIndexLink` objects."""
+        links = []
+        for idx_root, node in enumerate(self.nodes):
+            for i, leaf in enumerate(node.leaves):
+                idx_leaf = self.nodes.index(leaf)
+                links.append(NodeIndexLink(idx_root, 0, idx_leaf, i))
+        return links
+
+    def resolve_tree(self):
+        """Returns possible **trees** relation and orphan nodes."""
+        def build_tree(node, layers):
+            layers.append(node)
+            if len(node.leaves) == 0:
+                return layers
+
+            sub_layers = []
+            for leaf in node.leaves:
+                sub_layers.append(build_tree(leaf, []))
+
+            # Flatten sub_layers
+            flattened = [v for sub in sub_layers for v in sub]
+            layers.append(flattened)
+            return layers
+
+        def build_layers(tree, layers, idx_current_layer):
+            if len(layers) < idx_current_layer + 1:
+                layers.append([])
+            for i, element in enumerate(tree):
+                if isinstance(element, list):
+                    layers = build_layers(element, layers, idx_current_layer + 1)
+                else:
+                    layers[idx_current_layer].append(element)
+            return layers
+
+        # Find roots and orphans
+        roots = []
+        orphans = []
+        for idx_root, node in enumerate(self.nodes):
+            if node.root is None:
+                if len(node.leaves) == 0:
+                    orphans.append(node)
+                else:
+                    roots.append(node)
+        # Build trees
+        trees = []
+        for root in roots:
+            trees.append(build_tree(root, []))
+
+        # Resolve layers starting from roots
+        layer_collection = []
+        for tree in trees:
+            layer_collection.append(build_layers(tree, [], 0))
+
+        return layer_collection, orphans
