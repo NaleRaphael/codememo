@@ -257,21 +257,66 @@ class NodeCollection(object):
 
     def resolve_tree(self):
         """Returns possible **trees** relation and orphan nodes."""
-        def build_tree(node, layers):
-            layers.append(node)
-            if len(node.leaves) == 0:
-                return layers
+        def build_tree(node, tree):
+            """Build a tree starting from given node.
 
-            sub_layers = []
+            Parameters
+            ----------
+            node : Node
+                Entry node to traverse.
+            tree : list
+                An container to store traversed nodes.
+
+            Returns
+            -------
+            tree : list
+                Traversed tree. Note that sublayers will be a list.
+                (See also the example below)
+
+            Example
+            -------
+            Given a tree structure (not expressed in list of `Node`):
+                A --- B
+                  \\- C --- D
+                        \\- E
+
+            This method returns:
+                [A, [B, C, [D, E]]]
+            """
+            tree.append(node)
+            if len(node.leaves) == 0:
+                return tree
+
+            subtrees = []
             for leaf in node.leaves:
-                sub_layers.append(build_tree(leaf, []))
+                subtrees.append(build_tree(leaf, []))
 
             # Flatten sub_layers
-            flattened = [v for sub in sub_layers for v in sub]
-            layers.append(flattened)
-            return layers
+            flattened = [v for sub in subtrees for v in sub]
+            tree.append(flattened)
+            return tree
 
         def build_layers(tree, layers, idx_current_layer):
+            """Convert tree to layers. Number of layers is determined by the
+            depth of given tree.
+
+            Parameters
+            ----------
+            tree : list
+                Result of `build_tree()`.
+            layers : list
+                A container to store converted layer from given tree.
+            idx_current_layer : int
+                An index indicating the current layer, should be initialized to 0.
+
+            Example
+            -------
+            Given a tree:
+                [A, [B, C, [D, E]]]
+
+            This method returns:
+                [[A], [B, C], [D, E]]
+            """
             if len(layers) < idx_current_layer + 1:
                 layers.append([])
             for i, element in enumerate(tree):
