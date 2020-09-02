@@ -77,33 +77,37 @@ class MenuBar(ImguiComponent):
 
 class CodeSnippetWindow(ImguiComponent):
     """A window to show code snippet."""
+    DEFAULT_SNIPPET_WINDOW_HEIGHT = -140
+    DEFAULT_COMMENT_WINDOW_HEIGHT = 60
+    DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
-    def __init__(self, snippet, max_width=640, max_height=360):
+    def __init__(self, snippet, comment=None, max_width=640, max_height=360):
         if not isinstance(snippet, Snippet):
             raise TypeError(f'should be an instance of {Snippet}')
         self.snippet = snippet
         self.window_name = f'snippet: {snippet.name}'
         self.rows = snippet.content.splitlines()
+        self.comment = '' if comment is None else comment
 
         n_digit = len('%i' % (len(self.rows) + snippet.line_start - 1))
-        self.width_lineno = 15 * n_digit
+        snippet_height = (len(self.rows) + 2) * CODE_CHAR_HEIGHT
+        self.width_lineno = CODE_CHAR_WIDTH * n_digit
         self.width_code = max([len(v) for v in self.rows]) * CODE_CHAR_WIDTH
-        self.width = min(self.width_lineno + self.width_code, max_width)
-        self.height = min((len(self.rows) + 1) * CODE_CHAR_HEIGHT + 45, max_height)
+        self.width = min(self.width_lineno + self.width_code + 30, max_width)
+        self.height = min(snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT, max_height)
 
         self.selected = [False] * len(self.rows)
-        self.expanded = True
-        self.opened = False
+        self.window_opened = False
+
+        self.collapsing_header_expanded = True
+        self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
+        self.prev_hsplitter_dragging_delta_y = 0.0
 
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
 
-    def initialize_table(self):
-        self.expanded, self.opened = imgui.begin(self.window_name, closable=True)
-        imgui.set_window_size(self.width, self.height)
-        imgui.columns(2)
-        imgui.separator()
-        imgui.set_column_width(0, self.width_lineno)
+    def reset_hsplitter_draggin_delta_y(self):
+        self.prev_hsplitter_dragging_delta_y = 0.0
 
     def handle_selectable_row(self, i, row):
         """Deal with range selection by SHIFT key + click. Possible conditions:
@@ -133,6 +137,19 @@ class CodeSnippetWindow(ImguiComponent):
                 self.reset_selected()
                 self.selected[i] = True
 
+    def handle_hsplitter(self):
+        imgui.invisible_button('hsplitter', *imgui.Vec2(-1, 8))
+        if imgui.is_item_active():
+            if imgui.is_mouse_dragging(0):
+                curr_delta = imgui.get_mouse_drag_delta(0).y
+                delta = curr_delta - self.prev_hsplitter_dragging_delta_y
+                self.snippet_window_height += delta
+                self.prev_hsplitter_dragging_delta_y = curr_delta
+            else:
+                self.reset_hsplitter_draggin_delta_y()
+            if imgui.is_mouse_double_clicked():
+                self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
+
     def create_context_menu(self):
         states = {'opened': False}
 
@@ -143,31 +160,74 @@ class CodeSnippetWindow(ImguiComponent):
                 return
 
             if states['opened']:
-                imgui.selectable('link to root')
+                # imgui.selectable('link to root')  # TODO: should be in the context menu for the whole snippet
                 imgui.selectable('link to leaf')
                 imgui.end_popup()
         return context_menu
 
-    def render(self):
-        if not self.opened:
-            return
+    def display_table(self):
+        imgui.columns(2)
 
-        self.initialize_table()
-        if not self.opened:
-            imgui.end()
-            return
+        imgui.text('no.')
+        imgui.set_column_width(0, self.width_lineno)
+        imgui.next_column()
+        imgui.text('code')
+        imgui.next_column()
+        imgui.separator()
 
         context_menu = self.create_context_menu()
-        line_offset = self.snippet.line_start
         for i, row in enumerate(self.rows):
-            imgui.text(str(i + line_offset))
+            imgui.text(str(i+1))
             imgui.next_column()
 
             self.handle_selectable_row(i, row)
             if self.selected[i]:
                 context_menu()
             imgui.next_column()
-        imgui.separator()
+
+    def display_comment_window(self):
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text_multiline('', self.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5)
+        if changed:
+            self.comment = text
+        imgui.pop_item_width()
+
+    def render(self):
+        if not self.window_opened:
+            return
+        _, self.window_opened = imgui.begin(self.window_name, closable=True, flags=imgui.WINDOW_NO_SCROLLBAR)
+        if not self.window_opened:
+            imgui.end()
+            return
+        imgui.set_window_size(self.width, self.height)
+
+        # --- Make the height of the following windows adjustable
+        # ref: https://github.com/ocornut/imgui/issues/125#issuecomment-135775009
+        imgui.push_style_var(imgui.STYLE_ITEM_SPACING, imgui.Vec2(0, 0))
+
+        # Table for code snippet
+        current_window_size = imgui.get_window_content_region_max()
+        if self.collapsing_header_expanded:
+            h_snippet = self.snippet_window_height
+        else:
+            h_snippet = current_window_size.y - 60
+        imgui.begin_child('code snippet', -5, h_snippet, border=True, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        self.display_table()
+        imgui.end_child()
+
+        # Horizontal splitter
+        self.handle_hsplitter()
+
+        # Comment window
+        imgui.begin_child('comment', 0, 0, border=False, flags=imgui.WINDOW_NO_SCROLLBAR)
+        self.collapsing_header_expanded, visible = imgui.collapsing_header('Comment')
+        if self.collapsing_header_expanded:
+            self.display_comment_window()
+        imgui.end_child()
+
+        imgui.pop_style_var()
+        # ---
+
         imgui.end()
 
 
@@ -191,7 +251,7 @@ class CodeNodeComponent(ImguiComponent):
         self.root = node.root
         self.leaves = node.leaves
         self.name = node.snippet.name
-        self.snippet_window = CodeSnippetWindow(node.snippet)
+        self.snippet_window = CodeSnippetWindow(node.snippet, node.comment)
         self.container = None
 
     def get_leaf_slot_pos(self, slot_no):
@@ -236,7 +296,7 @@ class CodeNodeComponent(ImguiComponent):
             if imgui.is_mouse_double_clicked() or (
                 imgui.get_io().key_ctrl and imgui.is_mouse_clicked()
             ):
-                self.snippet_window.opened = True
+                self.snippet_window.window_opened = True
                 imgui.set_next_window_focus()
         self.snippet_window.render()
 
