@@ -1,7 +1,12 @@
 import imgui
 from imgui import Vec2 as _Vec2
 
-from .objects import Code as CodeSnippet
+from .objects import (
+    Snippet,
+    Node,
+    NodeLink,
+    NodeCollection,
+)
 
 CODE_CHAR_WIDTH = 8
 CODE_CHAR_HEIGHT = 17
@@ -12,7 +17,6 @@ __all__ = [
     'MenuBar',
     'CodeSnippetWindow',
     'CodeNode',
-    'CodeNodeLink',
     'CodeNodeViewer',
 ]
 
@@ -35,6 +39,9 @@ class Vec2(_Vec2):
 
     def __rmul__(self, val):
         return self.__mul__(val)
+
+    def __repr__(self):
+        return f'<Vec2 ({self.x}, {self.y})>'
 
 
 class ImguiComponent(object):
@@ -71,14 +78,14 @@ class MenuBar(ImguiComponent):
 class CodeSnippetWindow(ImguiComponent):
     """A window to show code snippet."""
 
-    def __init__(self, code_snippet, max_width=640, max_height=360):
-        if not isinstance(code_snippet, CodeSnippet):
-            raise TypeError(f'should be an instance of {CodeSnippet}')
-        self.code_snippet = code_snippet
-        self.window_name = f'snippet: {code_snippet.name}'
-        self.rows = code_snippet.content.splitlines()
+    def __init__(self, snippet, max_width=640, max_height=360):
+        if not isinstance(snippet, Snippet):
+            raise TypeError(f'should be an instance of {Snippet}')
+        self.snippet = snippet
+        self.window_name = f'snippet: {snippet.name}'
+        self.rows = snippet.content.splitlines()
 
-        n_digit = len('%i' % (len(self.rows) + code_snippet.line_start - 1))
+        n_digit = len('%i' % (len(self.rows) + snippet.line_start - 1))
         self.width_lineno = 15 * n_digit
         self.width_code = max([len(v) for v in self.rows]) * CODE_CHAR_WIDTH
         self.width = min(self.width_lineno + self.width_code, max_width)
@@ -151,7 +158,7 @@ class CodeSnippetWindow(ImguiComponent):
             return
 
         context_menu = self.create_context_menu()
-        line_offset = self.code_snippet.line_start
+        line_offset = self.snippet.line_start
         for i, row in enumerate(self.rows):
             imgui.text(str(i + line_offset))
             imgui.next_column()
@@ -164,48 +171,35 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.end()
 
 
-class CodeNodeLink(ImguiComponent):
-    def __init__(self, leaf_idx, leaf_slot, root_idx, root_slot):
-        self.leaf_idx = leaf_idx
-        self.leaf_slot = leaf_slot
-        self.root_idx = root_idx
-        self.root_slot = root_slot
-
-
 NODE_SLOT_RADIUS = 4.0
 NODE_WINDOW_PADDING = Vec2(8.0, 8.0)
 
-class CodeNode(ImguiComponent):
-    def __init__(self, _id, name, pos, code_snippet_window):
+class CodeNodeComponent(ImguiComponent):
+    def __init__(self, _id, pos, node):
         """
         Parameters
         ----------
         _id : int
         name : str
         pos : Vec2
-        code_snippet_window: CodeSnippetWindow
+        node : codememo.objects.Node
         """
         self.id = _id
-        self.name = name
         self.pos = pos
         self.size = Vec2(320, 180)
-        self.code_snippet_window = code_snippet_window
-        self.root = None
-        self.leaves = []
+        self.node = node
+        self.root = node.root
+        self.leaves = node.leaves
+        self.name = node.snippet.name
+        self.snippet_window = CodeSnippetWindow(node.snippet)
         self.container = None
-
-    def set_root(self, root_node):
-        self.root = root_node
-
-    def add_leaf(self, leaf_node):
-        self.leaves.append(leaf_node)
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
-        return Vec2(self.pos.x, y)
+        return Vec2(self.pos.x + self.size.x, y)
 
     def get_root_slot_pos(self):
-        return Vec2(self.pos.x + self.size.x, self.pos.y + self.size.y / 2.)
+        return Vec2(self.pos.x, self.pos.y + self.size.y / 2.)
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -224,7 +218,7 @@ class CodeNode(ImguiComponent):
         old_any_active = imgui.is_any_item_active()
         imgui.set_cursor_screen_pos(node_rect_min + NODE_WINDOW_PADDING)
         imgui.begin_group()
-        imgui.text(f'{self.name}')
+        imgui.text(f'{self.node.snippet.name}')
         imgui.end_group()
 
         # Save the size
@@ -242,9 +236,9 @@ class CodeNode(ImguiComponent):
             if imgui.is_mouse_double_clicked() or (
                 imgui.get_io().key_ctrl and imgui.is_mouse_clicked()
             ):
-                self.code_snippet_window.opened = True
+                self.snippet_window.opened = True
                 imgui.set_next_window_focus()
-        self.code_snippet_window.render()
+        self.snippet_window.render()
 
         # TODO: for context menu
         self.container.handle_active_node(self, old_any_active)
@@ -259,11 +253,14 @@ class CodeNode(ImguiComponent):
         draw_list.add_rect(*node_rect_min, *node_rect_max, node_fg_color, 4.0)
 
 
+LAYOUT_NODE_OFFSET_X = 80
+LAYOUT_NODE_OFFSET_Y = 80
+
 class CodeNodeViewer(ImguiComponent):
-    """ A viewer for CodeNode.
+    """ A viewer for CodeNodeComponent.
     reference: https://gist.github.com/ocornut/7e9b3ec566a333d725d4
     """
-    def __init__(self, app):
+    def __init__(self, app, node_collection):
         self.app = app
         self.nodes = []
         self.links = []
@@ -276,8 +273,40 @@ class CodeNodeViewer(ImguiComponent):
         self.temp_flag = True
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
-
         self.opened = False
+
+        self.init_nodes_and_links(node_collection)
+
+    def init_nodes_and_links(self, node_collection):
+        trees, orphans = node_collection.resolve_tree()
+        self.links = node_collection.resolve_index_links_from_trees(trees)
+
+        # Calculate node positions for layout, note that orphan nodes are prepended
+        # at the first column.
+        positions = []
+        ux, uy = LAYOUT_NODE_OFFSET_X, LAYOUT_NODE_OFFSET_Y
+        x_offset = ux if len(orphans) != 0 else 0
+        y_offset = 0
+        tree_widths = [max([len(layer) for layer in tree]) for tree in trees]
+        for n, tree in enumerate(trees):
+            for i, layer in enumerate(tree):
+                for j, node in enumerate(layer):
+                    positions.append(Vec2(i*ux + x_offset, j*uy + y_offset))
+            # update `y_offset` for next tree
+            y_offset += tree_widths[n] * uy
+        for i, v in enumerate(orphans):
+            positions.append(Vec2(0, i*uy))
+
+        # Instantiate `CodeNodeComponent`s with calculated positions
+        nodes = []
+        for tree in trees:
+            nodes.extend([v for layer in tree for v in layer])
+        nodes.extend(orphans)
+        self.nodes = [CodeNodeComponent(i, positions[i], v) for i, v in enumerate(nodes)]
+
+        # Set container (viewer) for nodes
+        for node in self.nodes:
+            node.set_container(self)
 
     def reset_hovered_id_cache(self):
         self.id_hovered_in_list = -1
@@ -379,7 +408,7 @@ class CodeNodeViewer(ImguiComponent):
             node_leaf = self.nodes[link.leaf_idx]
             node_root = self.nodes[link.root_idx]
             p1 = offset + node_leaf.get_root_slot_pos()
-            p2 = offset + node_root.get_leaf_slot_pos(link.root_slot)
+            p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
             draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
             slot_color = imgui.get_color_u32_rgba(0.75, 0.75, 0.75, 1)
             draw_list.add_circle_filled(*p1, 4.0, slot_color)
