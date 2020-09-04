@@ -7,6 +7,7 @@ from .objects import (
     NodeLink,
     NodeCollection,
 )
+from .interanl import GlobalState
 
 CODE_CHAR_WIDTH = 8
 CODE_CHAR_HEIGHT = 17
@@ -18,6 +19,7 @@ __all__ = [
     'CodeSnippetWindow',
     'CodeNode',
     'CodeNodeViewer',
+    'ErrorMessageModal',
 ]
 
 
@@ -545,9 +547,53 @@ class CodeNodeViewer(ImguiComponent):
             return
 
         imgui.set_window_size(600, 400)
+        self.handle_state()
         self.display_menu_bar()
         self.draw_node_list()
         imgui.same_line()
         self.draw_node_canvas()
-        imgui.separator()
+        imgui.end()
+
+
+class ErrorMessageModal(ImguiComponent):
+    def __init__(self, app, error_msg):
+        from textwrap import wrap as wrap_text
+
+        self.app = app
+        self.error_msg = '\n'.join(wrap_text(error_msg, width=40))
+        self.opened = False
+        self.modal_opened = False
+        self.close_button_clicked = False
+
+    def close(self):
+        self.app.remove_component(self)
+        self.app = None
+
+    def render(self):
+        _, self.opened = imgui.begin('error-modal-window', flags=imgui.WINDOW_NO_TITLE_BAR)
+        imgui.set_window_size(0, 0)
+
+        # NOTE: Show this window at left-top corner since it just a container
+        # for showing modal.
+        imgui.set_window_position_labeled('error-modal-window', -10, -10)
+        if not self.opened:
+            imgui.end()
+            return
+        imgui.open_popup('Error')
+        imgui.same_line()
+        self.modal_opened, _ = imgui.begin_popup_modal(
+            'Error', flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE
+        )
+        if self.modal_opened:
+            imgui.text(f'Error: {self.error_msg}')
+
+            # HACK: Use an empty label as the anchor to set cursor to center
+            # of current line.
+            imgui.text('')
+            imgui.same_line(imgui.get_window_width()/2 - 21)
+            if imgui.button('Close'):
+                self.close()
+            imgui.end_popup()
+        else:
+            self.close()
         imgui.end()

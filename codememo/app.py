@@ -8,8 +8,10 @@ from .components import (
     MenuBar,
     CodeSnippetWindow,
     CodeNodeViewer,
+    ErrorMessageModal,
 )
 from .config import FPS, FRAME_UPDATE_INTERVAL
+from .interanl import GlobalState
 
 __all__ = ['Application']
 
@@ -27,6 +29,7 @@ class Application(object):
         self.init_draw_process()
 
         self._removed_components = []
+        self._internal_state = GlobalState()
 
     def init_components(self):
         self.imgui_components = [
@@ -37,6 +40,9 @@ class Application(object):
         def update(dt):
             imgui.new_frame()
             for component in self.imgui_components:
+                while self._internal_state.error_occured:
+                    error = self._internal_state.pop_error()
+                    self.add_component(ErrorMessageModal(self, str(error)))
                 component.render()
 
         @self.window.event
