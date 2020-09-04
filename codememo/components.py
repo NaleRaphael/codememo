@@ -7,6 +7,7 @@ from .objects import (
     NodeLink,
     NodeCollection,
 )
+from .events import NodeEvent, NodeEventPublisher
 from .interanl import GlobalState
 
 CODE_CHAR_WIDTH = 8
@@ -83,13 +84,15 @@ class CodeSnippetWindow(ImguiComponent):
     DEFAULT_COMMENT_WINDOW_HEIGHT = 60
     DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
-    def __init__(self, snippet, comment=None, max_width=640, max_height=360):
-        if not isinstance(snippet, Snippet):
-            raise TypeError(f'should be an instance of {Snippet}')
+    def __init__(self, node, max_width=640, max_height=360):
+        self.node = node
+        snippet = node.snippet
         self.snippet = snippet
         self.window_name = f'snippet: {snippet.name}'
         self.rows = snippet.content.splitlines()
-        self.comment = '' if comment is None else comment
+        self.comment = '' if node.comment is None else node.comment
+
+        self.event_publisher = NodeEventPublisher()
 
         n_digit = len('%i' % (len(self.rows) + snippet.line_start - 1))
         snippet_height = (len(self.rows) + 2) * CODE_CHAR_HEIGHT
@@ -110,6 +113,14 @@ class CodeSnippetWindow(ImguiComponent):
 
     def reset_hsplitter_draggin_delta_y(self):
         self.prev_hsplitter_dragging_delta_y = 0.0
+
+    def get_selected_lines(self):
+        start = self.selected.index(True) + 1
+        stop = len(self.selected) - self.selected[::-1].index(True)
+        stop = stop if start != stop else None
+        if stop and not all(self.selected[start:stop]):
+            raise RuntimeError('Seleted rows are not contiguous')
+        return start, stop
 
     def handle_selectable_row(self, i, row):
         """Deal with range selection by SHIFT key + click. Possible conditions:
@@ -163,7 +174,16 @@ class CodeSnippetWindow(ImguiComponent):
 
             if states['opened']:
                 # imgui.selectable('link to root')  # TODO: should be in the context menu for the whole snippet
-                imgui.selectable('link to leaf')
+                clicked, selected = imgui.selectable('add reference')
+                if clicked:
+                    ref_start, ref_stop = self.get_selected_lines()
+                    event_args = dict(
+                        src_node=self.node,
+                        ref_start=ref_start,
+                        ref_stop=ref_stop,
+                    )
+                    event = NodeEvent('add_reference', **event_args)
+                    self.event_publisher.dispatch(event)
                 imgui.end_popup()
         return context_menu
 
@@ -253,8 +273,9 @@ class CodeNodeComponent(ImguiComponent):
         self.root = node.root
         self.leaves = node.leaves
         self.name = node.snippet.name
-        self.snippet_window = CodeSnippetWindow(node.snippet, node.comment)
+        self.snippet_window = CodeSnippetWindow(node)
         self.container = None
+        self.event_publisher = NodeEventPublisher()
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
@@ -267,6 +288,18 @@ class CodeNodeComponent(ImguiComponent):
         if not isinstance(container, CodeNodeViewer):
             raise TypeError(f'require a container {CodeNodeViewer} to render')
         self.container = container
+        self.snippet_window.event_publisher.register(self.container)
+        self.event_publisher.register(self)
+
+    def handle_event__add_reference(self, event):
+        try:
+            src_node = event.get('src_node')
+            kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
+            idx = self.container.node_collection.nodes.index(src_node)
+            self.container.node_collection.nodes[idx].add_leaf(self.node, **kwargs)
+            self.container.init_nodes_and_links()
+        except Exception as ex:
+            GlobalState().push_error(ex)
 
     def render(self, draw_list, offset):
         assert isinstance(self.container, CodeNodeViewer), (
@@ -302,6 +335,12 @@ class CodeNodeComponent(ImguiComponent):
                 imgui.set_next_window_focus()
         self.snippet_window.render()
 
+        # Handle event of adding reference node
+        if self.container.state_cache:
+            if imgui.is_item_clicked():
+                event = self.container.state_cache['event__add_reference']
+                self.handle_event__add_reference(event)
+
         # TODO: for context menu
         self.container.handle_active_node(self, old_any_active)
 
@@ -324,6 +363,7 @@ class CodeNodeViewer(ImguiComponent):
     """
     def __init__(self, app, node_collection):
         self.app = app
+        self.node_collection = node_collection
         self.nodes = []
         self.links = []
         self.id_selected = -1
@@ -336,13 +376,16 @@ class CodeNodeViewer(ImguiComponent):
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
         self.opened = False
+        self.state_cache = {}
 
-        self.init_nodes_and_links(node_collection)
+        self.init_nodes_and_links()
 
-    def init_nodes_and_links(self, node_collection):
-        trees, orphans = node_collection.resolve_tree()
-        self.links = node_collection.resolve_index_links_from_trees(trees)
+    def init_nodes_and_links(self):
+        trees, orphans = self.node_collection.resolve_tree()
+        self.links = self.node_collection.resolve_index_links_from_trees(trees)
 
+        # TODO: add a flag to control whether we should re-calculate the layout
+        # (would be useful when we are going to add a new node or link)
         # Calculate node positions for layout, note that orphan nodes are prepended
         # at the first column.
         positions = []
@@ -389,8 +432,6 @@ class CodeNodeViewer(ImguiComponent):
 
     def init_canvas(self):
         imgui.text(f'Hold middle mouse button to pan ({self.panning.x}, {self.panning.y})')
-        imgui.same_line(imgui.get_window_width() - 225)
-        _, self.show_grid = imgui.checkbox('Show grid', self.show_grid)
         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, Vec2(1, 1))
         imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, Vec2(0, 0))
         imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *(0.05, 0.1, 0.15))
@@ -402,6 +443,26 @@ class CodeNodeViewer(ImguiComponent):
 
     def finalize_canvas(self):
         imgui.end_child()
+
+    def handle_menu_item_save(self):
+        clicked, selected = imgui.menu_item('Save', 'Ctrl+S')
+        # TODO: imeplement this
+
+    def handle_menu_item_quit(self):
+        clicked, selected = imgui.menu_item('Quit')
+        if clicked:
+            self.close()
+
+    def handle_menu_item_show_grid(self):
+        _, self.show_grid = imgui.checkbox('Show grid', self.show_grid)
+
+    def handle_state(self):
+        if self.state_cache:
+            # Remove event and arguments of "add_reference" if this window is
+            # not focused anymore. And that means user can cancel the action
+            # by clicking elsewhere.
+            if not imgui.is_window_focused():
+                del self.state_cache['event__add_reference']
 
     def handle_active_node(self, node, old_any_active):
         node_widgets_active = (not old_any_active) and imgui.is_any_item_active()
@@ -437,6 +498,11 @@ class CodeNodeViewer(ImguiComponent):
             self.prev_panning_delta = curr_delta
         else:
             self.reset_panning_delta()
+
+    # event handler for "add_reference"
+    def handle_event__add_reference(self, event):
+        self.state_cache['event__add_reference'] = event
+        imgui.set_window_focus_labeled('CodeNodeViewer')
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
@@ -519,15 +585,24 @@ class CodeNodeViewer(ImguiComponent):
         self.handle_panning()
         self.finalize_canvas()
 
+        # Display message to notify user of reference selection
+        if self.state_cache.get('event__add_reference', False):
+            msg = '(Please select a node to link)'
+            cur_pos = Vec2(*imgui.get_cursor_screen_pos())
+            win_width = imgui.get_window_width()
+            pos = cur_pos + Vec2(win_width - 340, -20)
+            draw_list.add_text(*pos, imgui.get_color_u32_rgba(1,1,0,1), msg)
+
         imgui.end_group()
 
     def display_menu_bar(self):
         imgui.begin_menu_bar()
         if imgui.begin_menu('File'):
-            imgui.menu_item('Save', 'Ctrl+S')
-            clicked, selected = imgui.menu_item('Quit')
-            if clicked:
-                self.close()
+            self.handle_menu_item_save()
+            self.handle_menu_item_quit()
+            imgui.end_menu()
+        if imgui.begin_menu('View'):
+            self.handle_menu_item_show_grid()
             imgui.end_menu()
         imgui.end_menu_bar()
 

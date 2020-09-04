@@ -139,13 +139,55 @@ class Node(object):
         self.ref_info = None
 
     def add_leaf(self, node, ref_start=1, ref_stop=None):
+        """Add a leaf node referencing to the snippet in this node.
+
+        Arguments
+        ---------
+        node : Node
+        ref_start : int
+            Start line of this snippet as the reference to leaf node.
+        ref_stop : int
+            Stop line of this snippet as the reference to leaf node.
+
+        Example
+        -------
+        Snippet in source node (self):
+        ```python
+        def make_croissant():                                        # 1
+            weight_of_ingredients = prepare_ingredient('croissant')  # 2
+            croissant = Croissant(                                   # 3
+                butter=weight_of_ingredients['butter'],              # 4
+                egg=weight_of_ingredients['egg'],                    # 5
+                flour=weight_of_ingredients['flour'],                # 6
+                milk=weight_of_ingredients['milk'],                  # 7
+                sugar=weight_of_ingredients['sugar'],                # 8
+                salt=weight_of_ingredients['salt'],                  # 9
+                yeast=weight_of_ingredients['yeast'],                # 10
+            )                                                        # 11
+            croissant = bake(croissant)                              # 12
+            return croissant                                         # 13
+        ```
+
+        Snippet in leaf node:
+        ```python
+        class Croissant(object):
+            def __init__(self, **weight_of_ingredient):
+                # ...
+        ```
+
+        And we want make a reference link to source node at line 3 ~ 11,
+        we should call:
+        ```python
+        source_node.add_leaf(leaf_node, ref_start=3, ref_stop=11)
+        ```
+        """
+        n_lines = self.snippet.n_lines
         if not isinstance(node, Node):
             raise TypeError(f'should be an instance of {Node}')
-        n_lines = node.snippet.n_lines
         if ref_start < 1 or ref_start > n_lines:
             msg = f'Reference of start line should be in the range of [1, {n_lines}]'
             raise ValueError(msg)
-        if ref_stop and ref_stop > node.snippet.n_lines:
+        if ref_stop and ref_stop > n_lines:
             msg = f'Reference of stop line should be in the range of [1, {n_lines}]'
             raise ValueError(msg)
         if node.root is not None:
