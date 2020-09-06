@@ -19,6 +19,7 @@ __all__ = [
     'MenuBar',
     'CodeSnippetWindow',
     'CodeNode',
+    'CodeNodeCreaterWindow',
     'CodeNodeViewer',
     'ErrorMessageModal',
 ]
@@ -90,7 +91,8 @@ class CodeSnippetWindow(ImguiComponent):
         snippet = node.snippet
         self.snippet = snippet
         self.window_name = f'snippet: {snippet.name}'
-        self.rows = snippet.content.splitlines()
+        rows = snippet.content.splitlines()
+        self.rows = [''] if len(rows) == 0 else rows
         self.comment = '' if node.comment is None else node.comment
 
         self.event_publisher = NodeEventPublisher()
@@ -324,7 +326,6 @@ class CodeNodeComponent(ImguiComponent):
         self.name = node.snippet.name
         self.snippet_window = CodeSnippetWindow(node)
         self.container = None
-        self.event_publisher = NodeEventPublisher()
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
@@ -338,7 +339,6 @@ class CodeNodeComponent(ImguiComponent):
             raise TypeError(f'require a container {CodeNodeViewer} to render')
         self.container = container
         self.snippet_window.event_publisher.register(self.container)
-        self.event_publisher.register(self)
 
     def handle_event__add_reference(self, event):
         try:
@@ -401,6 +401,162 @@ class CodeNodeComponent(ImguiComponent):
 
         draw_list.add_rect_filled(*node_rect_min, *node_rect_max, node_bg_color, 4.0)
         draw_list.add_rect(*node_rect_min, *node_rect_max, node_fg_color, 4.0)
+
+
+class CodeNodeCreaterWindow(ImguiComponent):
+    """A window for creating node."""
+    INPUT_SNIPPET_NAME_MAX_LENGTH = 128
+    INPUT_SNIPPET_PATH_MAX_LENGTH = 512
+    INPUT_SNIPPET_CONTENT_MAX_LENGTH = 65536
+    INPUT_START_LINE_MAX_LENGTH = 16
+    SUPPORTED_LANGUAGES = {
+        '': 'raw',
+        '.c': 'c', '.h': 'c',
+        '.cpp': 'cpp', '.hpp': 'cpp',
+        '.py': 'python', '.pyx': 'python',
+    }
+
+    def __init__(self, app):
+        self.app = app
+        self.container = None
+        self.event_publisher = NodeEventPublisher()
+        self.valid_languages = list(set(self.SUPPORTED_LANGUAGES.values()))
+
+        self.input_snippet_name = ''
+        self.input_snippet_path = ''
+        self.input_language_index = self.valid_languages.index('raw')
+        self.input_snippet = ''
+        self.input_start_line = '1'
+
+        self.modal_opened = False
+
+    def set_container(self, container):
+        if not isinstance(container, CodeNodeViewer):
+            raise TypeError(f'require a container {CodeNodeViewer} to render')
+        self.container = container
+        self.event_publisher.register(container)
+
+    def close(self):
+        self.app.remove_component(self)
+        self.app = None
+
+    def create(self):
+        if self.input_snippet_name == '':
+            error_msg = f'"Snippet name" cannot be empty'
+            GlobalState().push_error(ValueError(error_msg))
+            return
+
+        lang = self.valid_languages[self.input_language_index]
+        snippet = Snippet(
+            self.input_snippet_name, self.input_snippet,
+            line_start=None, lang=lang,
+        )
+        node = Node(snippet)
+        event_args = dict(node=node)
+        event = NodeEvent('create_node', **event_args)
+        self.event_publisher.dispatch(event)
+        self.close()
+
+    def display_error_modal(self, error_msg):
+        imgui.open_popup('Error')
+        self.modal_opened, _ = imgui.begin_popup_modal(
+            'Error', flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE
+        )
+        if self.modal_opened:
+            imgui.text(f'Error: {error_msg}')
+            if imgui.button('Close'):
+                self.close()
+            imgui.end_popup()
+
+    def _check_input_number(self, value):
+        try:
+            int(value)
+        except ValueError:
+            return False
+        if len(value) > self.INPUT_START_LINE_MAX_LENGTH:
+            return False
+        return True
+
+    def render(self):
+        imgui.begin('code-node-creater-window')
+        imgui.set_window_size(300, 200)
+
+        # Inputs
+        imgui.begin_child('inputs', 0, -25)
+        imgui.text('Snippet name:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##snippet-name', self.input_snippet_name, self.INPUT_SNIPPET_NAME_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
+        )
+        if changed:
+            self.input_snippet_name = text
+
+        # TODO: Detect language automatically
+
+        imgui.text('Language:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        clicked, current = imgui.combo(
+            '##language', self.input_language_index, self.valid_languages
+        )
+        if clicked:
+            self.input_language_index = current
+
+        imgui.text('Path:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##path', self.input_snippet_path, self.INPUT_SNIPPET_PATH_MAX_LENGTH
+        )
+        if changed:
+            self.input_snippet_path = text
+
+        imgui.text('Start line:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##start-line', self.input_start_line, self.INPUT_START_LINE_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
+        )
+        if changed:
+            if self._check_input_number(text):
+                self.input_start_line = text
+            else:
+                error_msg = (
+                    f'Value of "Start line" should be an integer and not exceed '
+                    f'{self.INPUT_START_LINE_MAX_LENGTH} digits.'
+                )
+                GlobalState().push_error(ValueError(error_msg))
+                return
+
+        imgui.text('Snippet:')
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text_multiline(
+            '##snippet', self.input_snippet, self.INPUT_SNIPPET_CONTENT_MAX_LENGTH,
+            height=-5, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT
+        )
+        if changed:
+            self.input_snippet = text
+        imgui.end_child()
+
+        # Buttons
+        imgui.begin_group()
+        pos = Vec2(*imgui.get_cursor_position())
+        width = imgui.get_window_content_region_width()
+        imgui.set_cursor_pos(Vec2(pos.x + width - 107, pos.y))
+        is_btn_create_clicked = imgui.button('Create')
+        imgui.same_line()
+        is_btn_cancel_clicked = imgui.button('Cancel')
+        imgui.end_group()
+
+        if is_btn_create_clicked:
+            self.create()
+        if is_btn_cancel_clicked:
+            self.close()
+
+        imgui.end()
 
 
 LAYOUT_NODE_OFFSET_X = 80
@@ -537,7 +693,9 @@ class CodeNodeViewer(ImguiComponent):
     def handle_context_menu_canvas(self):
         if imgui.begin_popup_context_item('context-menu', 2):
             if imgui.selectable('Create node')[0]:
-                pass    # TODO: implement this
+                node_creater = CodeNodeCreaterWindow(self.app)
+                node_creater.set_container(self)
+                self.app.add_component(node_creater)
             imgui.end_popup()
 
     def handle_panning(self):
@@ -555,6 +713,11 @@ class CodeNodeViewer(ImguiComponent):
     def handle_event__add_reference(self, event):
         self.state_cache['event__add_reference'] = event
         imgui.set_window_focus_labeled('CodeNodeViewer')
+
+    def handle_event__create_node(self, event):
+        node = event.get('node')
+        self.node_collection.nodes.append(node)
+        self.init_nodes_and_links()
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
