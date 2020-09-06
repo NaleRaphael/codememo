@@ -421,8 +421,6 @@ class CodeNodeViewer(ImguiComponent):
         self.panning = Vec2(0.0, 0.0)
         self.show_grid = False
         self.open_context_menu = False
-        self.canvas_context_menu = None
-        self.canvas_context_menu_clicked = False
         self.temp_flag = True
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
@@ -536,54 +534,11 @@ class CodeNodeViewer(ImguiComponent):
                 # calls even when a node is not clicked.
                 self.reset_dragging_delta()
 
-    def create_context_menu(self):
-        # NOTE: `imgui.begin_popup_context_item()` does not work on canvas,
-        # so we have to draw this context menu manually.
-        mouse_pos = Vec2(*imgui.get_mouse_position())   # position in application window
-        state = {'pos': mouse_pos}
-
-        def context_menu_constructor():
-            pos = state['pos']
-            win_pos = imgui.get_window_position()
-            pos = pos - win_pos     # postion in this widget
-
-            imgui.set_cursor_position(pos)
-            imgui.begin_group()
-
-            # Get DrawList of current window
-            draw_list = imgui.get_overlay_draw_list()
-
-            # Use an invisible button to detect mouse click
-            btn_size = Vec2(64, 20)
-            imgui.invisible_button('Add node', *btn_size)
-
-            btn_bg_color = imgui.get_color_u32_rgba(0.22, 0.48, 0.79, 1) if (
-                imgui.is_item_hovered()
-            ) else imgui.get_color_u32_rgba(0.1, 0.2, 0.43, 1)
-            btn_fg_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 1)
-
-            pos = pos + win_pos     # position in application window
-            draw_list.add_rect_filled(*pos, *(pos + btn_size), btn_bg_color)
-            draw_list.add_rect(*pos, *(pos + btn_size), btn_fg_color)
-            draw_list.add_text(*(pos + Vec2(4, 4)), btn_fg_color, 'Add node')
-            if imgui.is_item_clicked():
-                print('clicked')    # TODO: implement feature of adding node
-                self.canvas_context_menu_clicked = True
-            imgui.end_group()
-        return context_menu_constructor
-
     def handle_context_menu_canvas(self):
-        if imgui.is_item_clicked(2):
-            self.canvas_context_menu = self.create_context_menu()
-
-        # Display context menu
-        if self.canvas_context_menu:
-            self.canvas_context_menu()
-
-        # Close context menu if it is clicked or user click elsewhere
-        if self.canvas_context_menu_clicked or imgui.is_mouse_clicked(0):
-            self.canvas_context_menu = None
-            self.canvas_context_menu_clicked = False
+        if imgui.begin_popup_context_item('context-menu', 2):
+            if imgui.selectable('Create node')[0]:
+                pass    # TODO: implement this
+            imgui.end_popup()
 
     def handle_panning(self):
         if not imgui.is_window_hovered():
@@ -722,13 +677,25 @@ class CodeNodeViewer(ImguiComponent):
         self.display_menu_bar()
         self.draw_node_list()
         imgui.same_line()
+        imgui.begin_group()
         self.draw_node_canvas()
+        imgui.end_group()
         self.handle_context_menu_canvas()
         imgui.end()
 
 
 class ErrorMessageModal(ImguiComponent):
+    """A modal for showing error message."""
+
     def __init__(self, app, error_msg):
+        """
+        Parameters
+        ----------
+        app : codememo.Application
+            Reference of running application.
+        error_msg : str
+            Error message.
+        """
         from textwrap import wrap as wrap_text
 
         self.app = app
