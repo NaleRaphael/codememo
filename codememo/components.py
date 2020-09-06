@@ -81,6 +81,7 @@ class MenuBar(ImguiComponent):
 class CodeSnippetWindow(ImguiComponent):
     """A window to show code snippet."""
     DEFAULT_SNIPPET_WINDOW_HEIGHT = -140
+    DEFAULT_SNIPPET_BUFFER_SIZE = 65536
     DEFAULT_COMMENT_WINDOW_HEIGHT = 60
     DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
@@ -107,6 +108,9 @@ class CodeSnippetWindow(ImguiComponent):
         self.collapsing_header_expanded = True
         self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
         self.prev_hsplitter_dragging_delta_y = 0.0
+
+        self.is_edit_mode = False
+        self.edited_content = ''    # used for caching snippet content for editing
 
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
@@ -166,7 +170,7 @@ class CodeSnippetWindow(ImguiComponent):
     def create_context_menu(self):
         states = {'opened': False}
 
-        def context_menu():
+        def context_menu(is_any_row_selected):
             if not states['opened']:
                 states['opened'] = imgui.begin_popup_context_item('Context menu', mouse_button=2)
             else:
@@ -174,16 +178,24 @@ class CodeSnippetWindow(ImguiComponent):
 
             if states['opened']:
                 # imgui.selectable('link to root')  # TODO: should be in the context menu for the whole snippet
-                clicked, selected = imgui.selectable('add reference')
-                if clicked:
-                    ref_start, ref_stop = self.get_selected_lines()
-                    event_args = dict(
-                        src_node=self.node,
-                        ref_start=ref_start,
-                        ref_stop=ref_stop,
-                    )
-                    event = NodeEvent('add_reference', **event_args)
-                    self.event_publisher.dispatch(event)
+                # Prepare to enter edit mode
+                if imgui.selectable('edit')[0]:
+                    self.is_edit_mode = True
+                    self.edited_content = self.node.snippet.content
+
+                # Add the following menu items only when lines are selected
+                if is_any_row_selected:
+                    if imgui.selectable('add reference')[0]:
+                        ref_start, ref_stop = self.get_selected_lines()
+                        event_args = dict(
+                            src_node=self.node,
+                            ref_start=ref_start,
+                            ref_stop=ref_stop,
+                        )
+                        event = NodeEvent('add_reference', **event_args)
+                        self.event_publisher.dispatch(event)
+                    if imgui.selectable('cancel selection')[0]:
+                        self.reset_selected()
                 imgui.end_popup()
         return context_menu
 
@@ -197,14 +209,10 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.next_column()
         imgui.separator()
 
-        context_menu = self.create_context_menu()
         for i, row in enumerate(self.rows):
             imgui.text(str(i+1))
             imgui.next_column()
-
             self.handle_selectable_row(i, row)
-            if self.selected[i]:
-                context_menu()
             imgui.next_column()
 
     def display_comment_window(self):
@@ -214,16 +222,8 @@ class CodeSnippetWindow(ImguiComponent):
             self.comment = text
         imgui.pop_item_width()
 
-    def render(self):
-        if not self.window_opened:
-            return
-        _, self.window_opened = imgui.begin(self.window_name, closable=True, flags=imgui.WINDOW_NO_SCROLLBAR)
-        if not self.window_opened:
-            imgui.end()
-            return
-        imgui.set_window_size(self.width, self.height)
-
-        # --- Make the height of the following windows adjustable
+    def _render_view_mode(self):
+        # Make the height of the following windows adjustable
         # ref: https://github.com/ocornut/imgui/issues/125#issuecomment-135775009
         imgui.push_style_var(imgui.STYLE_ITEM_SPACING, imgui.Vec2(0, 0))
 
@@ -237,6 +237,12 @@ class CodeSnippetWindow(ImguiComponent):
         self.display_table()
         imgui.end_child()
 
+        # Context menu
+        # NOTE: This should be invoked right after the end of displaying table.
+        context_menu = self.create_context_menu()
+        is_any_row_selected = any(self.selected)
+        context_menu(is_any_row_selected)
+
         # Horizontal splitter
         self.handle_hsplitter()
 
@@ -248,7 +254,50 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.end_child()
 
         imgui.pop_style_var()
-        # ---
+
+    def _render_edit_mode(self):
+        imgui.begin_child('code snippet', 0, -25, border=False)
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text_multiline('', self.edited_content, self.DEFAULT_SNIPPET_BUFFER_SIZE, height=-5)
+        if changed:
+            self.edited_content = text
+        imgui.pop_item_width()
+        imgui.end_child()
+
+        # Buttons
+        imgui.begin_group()
+        pos = Vec2(*imgui.get_cursor_position())
+        width = imgui.get_window_content_region_width()
+        imgui.set_cursor_pos(Vec2(pos.x + width - 92, pos.y))
+        is_btn_save_clicked = imgui.button('Save')
+        imgui.same_line()
+        is_btn_cancel_clicked = imgui.button('Cancel')
+        imgui.end_group()
+
+        if is_btn_save_clicked:
+            print('Saving changes')
+            self.is_edit_mode = False
+            self.node.snippet.content = self.edited_content
+            self.rows = self.node.snippet.content.splitlines()
+            self.edited_content = ''
+        elif is_btn_cancel_clicked:
+            print('Canceling, exit edit mode')
+            self.is_edit_mode = False
+            self.edited_content = ''
+
+    def render(self):
+        if not self.window_opened:
+            return
+        _, self.window_opened = imgui.begin(self.window_name, closable=True, flags=imgui.WINDOW_NO_SCROLLBAR)
+        if not self.window_opened:
+            imgui.end()
+            return
+        imgui.set_window_size(self.width, self.height)
+
+        if self.is_edit_mode:
+            self._render_edit_mode()
+        else:
+            self._render_view_mode()
 
         imgui.end()
 
