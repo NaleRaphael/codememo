@@ -164,17 +164,32 @@ class CodeSnippetWindow(ImguiComponent):
                 self.selected[i] = True
 
     def handle_hsplitter(self):
-        imgui.invisible_button('hsplitter', *imgui.Vec2(-1, 8))
-        if imgui.is_item_active():
-            if imgui.is_mouse_dragging(0):
-                curr_delta = imgui.get_mouse_drag_delta(0).y
-                delta = curr_delta - self.prev_hsplitter_dragging_delta_y
-                self.snippet_window_height += delta
-                self.prev_hsplitter_dragging_delta_y = curr_delta
-            else:
-                self.reset_hsplitter_draggin_delta_y()
-            if imgui.is_mouse_double_clicked():
-                self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
+        if self.collapsing_header_expanded:
+            imgui.push_style_color(imgui.COLOR_BUTTON, 1, 1, 1, 0.1)
+            imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 1, 1, 1, 0.1)
+            imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 1, 1, 1, 0.1)
+            imgui.begin_group()
+            imgui.invisible_button('##spacing', *imgui.Vec2(-1, 3))
+            imgui.set_cursor_pos_x(10)
+            imgui.button('##hsplitter', *imgui.Vec2(-5, 2))
+            imgui.invisible_button('##spacing', *imgui.Vec2(-1, 3))
+            imgui.end_group()
+            imgui.pop_style_color()
+            imgui.pop_style_color()
+            imgui.pop_style_color()
+
+            if imgui.is_item_active():
+                if imgui.is_mouse_dragging(0):
+                    curr_delta = imgui.get_mouse_drag_delta(0).y
+                    delta = curr_delta - self.prev_hsplitter_dragging_delta_y
+                    self.snippet_window_height += delta
+                    self.prev_hsplitter_dragging_delta_y = curr_delta
+                else:
+                    self.reset_hsplitter_draggin_delta_y()
+                if imgui.is_mouse_double_clicked():
+                    self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
+        else:
+            imgui.invisible_button('##hsplitter', *imgui.Vec2(-1, 8))
 
     def create_context_menu(self):
         states = {'opened': False}
