@@ -105,6 +105,7 @@ class CodeSnippetWindow(ImguiComponent):
         self.height = min(snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT, max_height)
 
         self.selected = [False] * len(self.rows)
+        self.reference_info = None
         self.window_opened = False
 
         self.collapsing_header_expanded = True
@@ -139,7 +140,13 @@ class CodeSnippetWindow(ImguiComponent):
         4. clicked without SHIFT key, there is already a selected item:
             clear all selection and set current item to selected.
         """
-        clicked, selected = imgui.selectable(row, selected=self.selected[i])
+        highlighted = (self.reference_info is not None) and self.reference_info.line_info.in_range(i+1)
+        if highlighted:
+            imgui.push_style_color(imgui.COLOR_HEADER, 0.5, 0.8, 0.5, 0.4)
+            clicked, selected = imgui.selectable(row, selected=True)
+            imgui.pop_style_color()
+        else:
+            clicked, selected = imgui.selectable(row, selected=self.selected[i])
 
         if clicked:
             if not any(self.selected):
@@ -179,15 +186,18 @@ class CodeSnippetWindow(ImguiComponent):
                 return
 
             if states['opened']:
-                # imgui.selectable('link to root')  # TODO: should be in the context menu for the whole snippet
                 # Prepare to enter edit mode
-                if imgui.selectable('edit')[0]:
+                if imgui.selectable('Edit')[0]:
                     self.is_edit_mode = True
                     self.edited_content = self.node.snippet.content
 
+                # Clear highlighted lines
+                if imgui.selectable('Clear highlight')[0]:
+                    self.reference_info = None
+
                 # Add the following menu items only when lines are selected
                 if is_any_row_selected:
-                    if imgui.selectable('add reference')[0]:
+                    if imgui.selectable('Add reference')[0]:
                         ref_start, ref_stop = self.get_selected_lines()
                         event_args = dict(
                             src_node=self.node,
@@ -196,7 +206,7 @@ class CodeSnippetWindow(ImguiComponent):
                         )
                         event = NodeEvent('add_reference', **event_args)
                         self.event_publisher.dispatch(event)
-                    if imgui.selectable('cancel selection')[0]:
+                    if imgui.selectable('Cancel selection')[0]:
                         self.reset_selected()
                 imgui.end_popup()
         return context_menu
@@ -581,8 +591,13 @@ class CodeNodeViewer(ImguiComponent):
         self.id_hovered_in_list = -1
         self.id_hovered_in_scene = -1
         self.panning = Vec2(0.0, 0.0)
+
+        # --- Flags for view control
+        # Show grid
         self.show_grid = False
-        self.temp_flag = True
+        # Highlight lines in CodeSnippetWindow when leaf node is clicked
+        self.enable_reference_highlight = True
+
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
         self.opened = False
@@ -673,6 +688,14 @@ class CodeNodeViewer(ImguiComponent):
     def handle_menu_item_show_grid(self):
         _, self.show_grid = imgui.checkbox('Show grid', self.show_grid)
 
+    def handle_menu_item_enable_reference_highlight(self):
+        clicked, self.enable_reference_highlight = imgui.checkbox(
+            'Reference highlight', self.enable_reference_highlight
+        )
+        if clicked:
+            if not self.enable_reference_highlight:
+                self.reset_highlighted_lines()
+
     def handle_state(self):
         if self.state_cache:
             # Remove event and arguments of "add_reference" if this window is
@@ -681,25 +704,33 @@ class CodeNodeViewer(ImguiComponent):
             if not imgui.is_window_focused():
                 del self.state_cache['event__add_reference']
 
-    def handle_active_node(self, node, old_any_active):
+    def handle_active_node(self, node_component, old_any_active):
         node_widgets_active = (not old_any_active) and imgui.is_any_item_active()
 
         if imgui.is_item_hovered():
-            self.id_hovered_in_scene = node.id
+            self.id_hovered_in_scene = node_component.id
 
         node_moving_active = imgui.is_item_active()
         if node_widgets_active or node_moving_active:
-            self.id_selected = node.id
+            self.handle_selected_node(node_component)
         if node_moving_active:
             if imgui.is_mouse_dragging(0):
                 curr_delta = Vec2(*imgui.get_mouse_drag_delta(0))
                 delta = curr_delta - self.prev_dragging_delta
-                node.pos = node.pos + delta
+                node_component.pos = node_component.pos + delta
                 self.prev_dragging_delta = curr_delta
             else:
                 # NOTE: Reset it only when mouse is not dragging to avoid redundant
                 # calls even when a node is not clicked.
                 self.reset_dragging_delta()
+
+    def handle_selected_node(self, node_component):
+        if self.enable_reference_highlight:
+            self.reset_highlighted_lines()
+            self.id_selected = node_component.id
+            self.highlight_referenced_lines(node_component)
+        else:
+            self.id_selected = node_component.id
 
     def handle_context_menu_canvas(self):
         states = [node.is_showing_context_menu for node in self.node_components]
@@ -737,6 +768,26 @@ class CodeNodeViewer(ImguiComponent):
         # TODO: create node at given position (`creation_pos`)
         self.node_collection.nodes.append(node)
         self.init_nodes_and_links()
+
+    def reset_highlighted_lines(self):
+        if self.id_selected == -1:
+            return
+        ids = [v.id for v in self.node_components]
+        selected = self.node_components[ids.index(self.id_selected)]
+        root_node = selected.node.root
+        if root_node is None:
+            return
+        nodes = [v.node for v in self.node_components]
+        idx = nodes.index(root_node)
+        self.node_components[idx].snippet_window.reference_info = None
+
+    def highlight_referenced_lines(self, node_component):
+        root_node = node_component.node.root
+        if root_node is None:
+            return
+        nodes = [v.node for v in self.node_components]
+        idx = nodes.index(root_node)
+        self.node_components[idx].snippet_window.reference_info = node_component.node.ref_info
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
@@ -787,15 +838,19 @@ class CodeNodeViewer(ImguiComponent):
         imgui.text('nodes')
         imgui.separator()
 
-        for node in self.node_components:
-            imgui.push_id(str(node.id))
-            clicked, selected = imgui.selectable(node.name, node.id == self.id_selected)
+        for node_component in self.node_components:
+            imgui.push_id(str(node_component.id))
+            clicked, selected = imgui.selectable(
+                node_component.name, node_component.id == self.id_selected
+            )
             if clicked:
-                self.id_selected = node.id
                 # TODO: If selected node is not in the visible range, pan the canvas
                 # until it shows up.
+
+                # Highlight those referenced lines in root node
+                self.handle_selected_node(node_component)
             if imgui.is_item_hovered():
-                self.id_hovered_in_list = node.id
+                self.id_hovered_in_list = node_component.id
             imgui.pop_id()
 
         imgui.end_child()
@@ -837,6 +892,7 @@ class CodeNodeViewer(ImguiComponent):
             imgui.end_menu()
         if imgui.begin_menu('View'):
             self.handle_menu_item_show_grid()
+            self.handle_menu_item_enable_reference_highlight()
             imgui.end_menu()
         imgui.end_menu_bar()
 

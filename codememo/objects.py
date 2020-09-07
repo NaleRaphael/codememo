@@ -23,6 +23,12 @@ class LineInfo(object):
     def __str__(self):
         return f'<{self.__class__.__name__}; start: {self.start}, stop: {self.stop}>'
 
+    def in_range(self, val):
+        if self.stop is None:
+            return self.start == val
+        else:
+            return self.stop >= val >= self.start
+
 
 class AbsoluteLineInfo(LineInfo):
     pass
