@@ -335,6 +335,7 @@ class CodeNodeComponent(ImguiComponent):
         self.snippet_window = CodeSnippetWindow(node)
         self.container = None
         self.is_showing_context_menu = False
+        self.confirmation_modal = False
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
@@ -414,8 +415,17 @@ class CodeNodeComponent(ImguiComponent):
         self.is_showing_context_menu = imgui.begin_popup_context_item('node-context-menu', 2)
         if self.is_showing_context_menu:
             if imgui.selectable('Remove node')[0]:
-                self.container.remove_node_component(self)
+                self.confirmation_modal = ConfirmationModal(
+                    'Confirm',
+                    f'Are you sure you want to delete this node \n"{self.name}"?',
+                    lambda: self.container.remove_node_component(self),
+                )
             imgui.end_popup()
+
+        if self.confirmation_modal:
+            self.confirmation_modal.render()
+            if self.confirmation_modal.terminated:
+                self.confirmation_modal = None
 
 
 class CodeNodeCreaterWindow(ImguiComponent):
@@ -975,3 +985,32 @@ class ErrorMessageModal(ImguiComponent):
         else:
             self.close()
         imgui.end()
+
+
+class ConfirmationModal(ImguiComponent):
+    def __init__(self, title, message, callback):
+        self.title = title
+        self.message = message
+        self.callback = callback
+        self.terminated = False
+
+    def render(self):
+        imgui.open_popup(self.title)
+        imgui.same_line()
+        self.modal_opened, _ = imgui.begin_popup_modal(
+            self.title, flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE
+        )
+        if self.modal_opened:
+            imgui.text(self.message)
+
+            # HACK: Use an empty label as the anchor to set cursor to center
+            # of current line.
+            imgui.text('')
+            imgui.same_line(imgui.get_window_width()/2 - 30)
+            if imgui.button('Yes'):
+                self.callback()
+                self.terminated = True
+            imgui.same_line()
+            if imgui.button('No'):
+                self.terminated = True
+            imgui.end_popup()
