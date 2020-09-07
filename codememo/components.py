@@ -277,13 +277,11 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.end_group()
 
         if is_btn_save_clicked:
-            print('Saving changes')
             self.is_edit_mode = False
             self.node.snippet.content = self.edited_content
             self.rows = self.node.snippet.content.splitlines()
             self.edited_content = ''
         elif is_btn_cancel_clicked:
-            print('Canceling, exit edit mode')
             self.is_edit_mode = False
             self.edited_content = ''
 
@@ -326,6 +324,7 @@ class CodeNodeComponent(ImguiComponent):
         self.name = node.snippet.name
         self.snippet_window = CodeSnippetWindow(node)
         self.container = None
+        self.is_showing_context_menu = False
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
@@ -402,6 +401,12 @@ class CodeNodeComponent(ImguiComponent):
         draw_list.add_rect_filled(*node_rect_min, *node_rect_max, node_bg_color, 4.0)
         draw_list.add_rect(*node_rect_min, *node_rect_max, node_fg_color, 4.0)
 
+        self.is_showing_context_menu = imgui.begin_popup_context_item('node-context-menu', 2)
+        if self.is_showing_context_menu:
+            if imgui.selectable('Remove node')[0]:
+                self.container.remove_node_component(self)
+            imgui.end_popup()
+
 
 class CodeNodeCreaterWindow(ImguiComponent):
     """A window for creating node."""
@@ -416,8 +421,9 @@ class CodeNodeCreaterWindow(ImguiComponent):
         '.py': 'python', '.pyx': 'python',
     }
 
-    def __init__(self, app):
+    def __init__(self, app, creation_pos=None):
         self.app = app
+        self.creation_pos = creation_pos
         self.container = None
         self.event_publisher = NodeEventPublisher()
         self.valid_languages = list(set(self.SUPPORTED_LANGUAGES.values()))
@@ -452,7 +458,7 @@ class CodeNodeCreaterWindow(ImguiComponent):
             line_start=None, lang=lang,
         )
         node = Node(snippet)
-        event_args = dict(node=node)
+        event_args = dict(node=node, node_pos=self.creation_pos)
         event = NodeEvent('create_node', **event_args)
         self.event_publisher.dispatch(event)
         self.close()
@@ -569,14 +575,13 @@ class CodeNodeViewer(ImguiComponent):
     def __init__(self, app, node_collection):
         self.app = app
         self.node_collection = node_collection
-        self.nodes = []
+        self.node_components = []
         self.links = []
         self.id_selected = -1
         self.id_hovered_in_list = -1
         self.id_hovered_in_scene = -1
         self.panning = Vec2(0.0, 0.0)
         self.show_grid = False
-        self.open_context_menu = False
         self.temp_flag = True
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
@@ -612,10 +617,10 @@ class CodeNodeViewer(ImguiComponent):
         for tree in trees:
             nodes.extend([v for layer in tree for v in layer])
         nodes.extend(orphans)
-        self.nodes = [CodeNodeComponent(i, positions[i], v) for i, v in enumerate(nodes)]
+        self.node_components = [CodeNodeComponent(i, positions[i], v) for i, v in enumerate(nodes)]
 
         # Set container (viewer) for nodes
-        for node in self.nodes:
+        for node in self.node_components:
             node.set_container(self)
 
     def reset_hovered_id_cache(self):
@@ -634,6 +639,13 @@ class CodeNodeViewer(ImguiComponent):
             self.id_hovered_in_scene == node.id or
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
+
+    def remove_node_component(self, node_component):
+        try:
+            self.node_collection.remove_node(node_component.node)
+            self.init_nodes_and_links()
+        except Exception as ex:
+            GlobalState().push_error(ex)
 
     def init_canvas(self):
         imgui.text(f'Hold middle mouse button to pan ({self.panning.x}, {self.panning.y})')
@@ -674,7 +686,6 @@ class CodeNodeViewer(ImguiComponent):
 
         if imgui.is_item_hovered():
             self.id_hovered_in_scene = node.id
-            self.open_context_menu = imgui.is_mouse_clicked(1)
 
         node_moving_active = imgui.is_item_active()
         if node_widgets_active or node_moving_active:
@@ -691,12 +702,19 @@ class CodeNodeViewer(ImguiComponent):
                 self.reset_dragging_delta()
 
     def handle_context_menu_canvas(self):
-        if imgui.begin_popup_context_item('context-menu', 2):
-            if imgui.selectable('Create node')[0]:
-                node_creater = CodeNodeCreaterWindow(self.app)
-                node_creater.set_container(self)
-                self.app.add_component(node_creater)
-            imgui.end_popup()
+        states = [node.is_showing_context_menu for node in self.node_components]
+        is_any_context_menu_showing = any(states)
+
+        # NOTE: To prevent confict, show this context menu only when no context menu
+        # of node is showing.
+        if not is_any_context_menu_showing:
+            mouse_pos = imgui.get_mouse_position()
+            if imgui.begin_popup_context_item('context-menu', 2):
+                if imgui.selectable('Create node')[0]:
+                    node_creater = CodeNodeCreaterWindow(self.app, creation_pos=mouse_pos)
+                    node_creater.set_container(self)
+                    self.app.add_component(node_creater)
+                imgui.end_popup()
 
     def handle_panning(self):
         if not imgui.is_window_hovered():
@@ -716,6 +734,7 @@ class CodeNodeViewer(ImguiComponent):
 
     def handle_event__create_node(self, event):
         node = event.get('node')
+        # TODO: create node at given position (`creation_pos`)
         self.node_collection.nodes.append(node)
         self.init_nodes_and_links()
 
@@ -748,8 +767,8 @@ class CodeNodeViewer(ImguiComponent):
         draw_list.channels_set_current(0)   # background
 
         for link in self.links:
-            node_leaf = self.nodes[link.leaf_idx]
-            node_root = self.nodes[link.root_idx]
+            node_leaf = self.node_components[link.leaf_idx]
+            node_root = self.node_components[link.root_idx]
             p1 = offset + node_leaf.get_root_slot_pos()
             p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
             draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
@@ -758,7 +777,7 @@ class CodeNodeViewer(ImguiComponent):
             draw_list.add_circle_filled(*p2, 4.0, slot_color)
 
     def display_nodes(self, draw_list, offset):
-        for node in self.nodes:
+        for node in self.node_components:
             imgui.push_id(str(node.id))
             node.render(draw_list, offset)
             imgui.pop_id()
@@ -768,14 +787,15 @@ class CodeNodeViewer(ImguiComponent):
         imgui.text('nodes')
         imgui.separator()
 
-        for node in self.nodes:
+        for node in self.node_components:
             imgui.push_id(str(node.id))
             clicked, selected = imgui.selectable(node.name, node.id == self.id_selected)
             if clicked:
                 self.id_selected = node.id
+                # TODO: If selected node is not in the visible range, pan the canvas
+                # until it shows up.
             if imgui.is_item_hovered():
                 self.id_hovered_in_list = node.id
-                self.open_context_menu = imgui.is_mouse_clicked(1)
             imgui.pop_id()
 
         imgui.end_child()
@@ -824,7 +844,7 @@ class CodeNodeViewer(ImguiComponent):
         """Let host application know that this component is going to be closed,
         and clear references to this object in order to release memory."""
         self.app.remove_component(self)
-        self.nodes = []
+        self.node_components = []
         self.links = []
         self.app = None
 
@@ -887,7 +907,7 @@ class ErrorMessageModal(ImguiComponent):
             'Error', flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE
         )
         if self.modal_opened:
-            imgui.text(f'Error: {self.error_msg}')
+            imgui.text(f'{self.error_msg}')
 
             # HACK: Use an empty label as the anchor to set cursor to center
             # of current line.

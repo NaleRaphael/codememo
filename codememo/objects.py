@@ -1,3 +1,5 @@
+from .exceptions import NodeRemovalException
+
 
 __all__ = ['LineInfo', 'Snippet', 'ReferenceInfo', 'Node', 'NodeCollection']
 
@@ -135,8 +137,13 @@ class Node(object):
         )
 
     def reset_root(self):
+        """Reset root of this node.
+
+        Note that this method **does not remove dependency** of root node,
+        consider using `remove_leaf()` instead.
+        """
         self.root = None
-        self.ref_info = None
+        self._ref_info = None
 
     def add_leaf(self, node, ref_start=1, ref_stop=None):
         """Add a leaf node referencing to the snippet in this node.
@@ -203,7 +210,12 @@ class Node(object):
         node.set_root(self, ref_start, ref_stop=ref_stop)
         self.leaves.append(node)
 
-    def remove_leaf(self, idx):
+    def remove_leaf(self, node):
+        idx = self.leaves.index(node)
+        self.leaves.pop(idx)
+        node.reset_root()
+
+    def remove_leaf_by_index(self, idx):
         node = self.leaves.pop(idx)
         node.reset_root()
 
@@ -265,6 +277,28 @@ class NodeIndexLink(object):
 class NodeCollection(object):
     def __init__(self, nodes):
         self.nodes = nodes
+
+    def index(self, node):
+        try:
+            target_index = self.nodes.index(node)
+        except ValueError:
+            target_index = -1
+        return target_index
+
+    def remove_node(self, target):
+        target_index = self.index(target)
+        if target_index == -1:
+            raise NodeRemovalException('node {target} does not exist in this collection')
+        if len(target.leaves) != 0:
+            msg = (
+                'there are remaining leaves, please remove them first before '
+                'removing this node.'
+            )
+            raise NodeRemovalException(msg)
+        self.nodes.pop(target_index)
+        root = target.root
+        if root is not None:
+            root.remove_leaf(target)
 
     def resolve_links(self):
         """Returns list of `NodeLink` objects."""
