@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import imgui
 from imgui import Vec2 as _Vec2
 
@@ -22,6 +24,8 @@ __all__ = [
     'CodeNodeCreatorWindow',
     'CodeNodeViewer',
     'ErrorMessageModal',
+    'ConfirmationModal',
+    'SaveFileDialog',
 ]
 
 
@@ -644,8 +648,19 @@ class CodeNodeViewer(ImguiComponent):
     """ A viewer for CodeNodeComponent.
     reference: https://gist.github.com/ocornut/7e9b3ec566a333d725d4
     """
-    def __init__(self, app, node_collection):
+    def __init__(self, app, node_collection, fn_src=None):
+        """
+        Parameters
+        ----------
+        app : codememo.Application
+            Reference of running application.
+        node_collection : codememo.objects.NodeCollection
+            Collection of nodes.
+        fn_src : str, optional
+            Filename of the source which `node_collection` is loaded from.
+        """
         self.app = app
+        self.fn_src = fn_src
         self.node_collection = node_collection
         self.node_components = []
         self.links = []
@@ -660,12 +675,22 @@ class CodeNodeViewer(ImguiComponent):
         # Highlight lines in CodeSnippetWindow when leaf node is clicked
         self.enable_reference_highlight = True
 
+        self.file_dialog = None
+
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
         self.opened = False
         self.state_cache = {}
 
         self.init_nodes_and_links()
+
+    @classmethod
+    def load(self, app, fn):
+        node_collection = NodeCollection.load(fn)
+        return cls(app, node_collection, fn_src=fn)
+
+    def save_data(self, fn):
+        self.node_collection.save(fn)
 
     def init_nodes_and_links(self):
         trees, orphans = self.node_collection.resolve_tree()
@@ -747,7 +772,18 @@ class CodeNodeViewer(ImguiComponent):
 
     def handle_menu_item_save(self):
         clicked, selected = imgui.menu_item('Save', 'Ctrl+S')
-        # TODO: imeplement this
+
+        if clicked:
+            if self.fn_src is not None:
+                self.save_data(self.fn_src)
+            else:
+                # This viewer is opened from scratch, so that it's `fn_src` is None
+                self.file_dialog = SaveFileDialog(self.app, self.save_data)
+
+    def handle_menu_item_save_as(self):
+        clicked, selected = imgui.menu_item('Save as')
+        if clicked:
+            self.file_dialog = SaveFileDialog(self.app, self.save_data)
 
     def handle_menu_item_quit(self):
         clicked, selected = imgui.menu_item('Quit')
@@ -772,6 +808,10 @@ class CodeNodeViewer(ImguiComponent):
             # by clicking elsewhere.
             if not imgui.is_window_focused():
                 del self.state_cache['event__add_reference']
+
+    def handle_file_dialog(self):
+        if self.file_dialog and self.file_dialog.terminated:
+            self.file_dialog = None
 
     def handle_active_node(self, node_component, old_any_active):
         node_widgets_active = (not old_any_active) and imgui.is_any_item_active()
@@ -962,7 +1002,8 @@ class CodeNodeViewer(ImguiComponent):
     def display_menu_bar(self):
         imgui.begin_menu_bar()
         if imgui.begin_menu('File'):
-            self.handle_menu_item_save()
+            self.handle_menu_item_save()    # overwrite the original file
+            self.handle_menu_item_save_as()
             self.handle_menu_item_quit()
             imgui.end_menu()
         if imgui.begin_menu('View'):
@@ -988,6 +1029,7 @@ class CodeNodeViewer(ImguiComponent):
 
         imgui.set_window_size(600, 400)
         self.handle_state()
+        self.handle_file_dialog()
         self.display_menu_bar()
         self.draw_node_list()
         imgui.same_line()
@@ -1057,11 +1099,11 @@ class ConfirmationModal(ImguiComponent):
         self.title = title
         self.message = message
         self.callback = callback
+        self.modal_opened = False
         self.terminated = False
 
     def render(self):
         imgui.open_popup(self.title)
-        imgui.same_line()
         self.modal_opened, _ = imgui.begin_popup_modal(
             self.title, flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE
         )
@@ -1079,3 +1121,89 @@ class ConfirmationModal(ImguiComponent):
             if imgui.button('No'):
                 self.terminated = True
             imgui.end_popup()
+
+
+class SaveFileDialog(ImguiComponent):
+    INPUT_FILENAME_MAX_LENGTH = 256
+
+    def __init__(self, app, callback):
+        """
+        app : codememo.Application
+            Reference of running application.
+        callback : function
+            A callback function which will be invoked after filename is sucessfully
+            validated. Note that this dialog will be closed then.
+            Passed arguments: [filename: str]
+        """
+        self.app = app
+        self.filename = str(Path('').absolute())
+        self.callback = callback
+        self.error_msg = ''
+        self.confirmation_modal = None
+        self.window_opened = False
+        self.modal_opened = False
+        self.terminated = False
+        self.app.add_component(self)
+
+    def close(self):
+        self.terminated = True
+        self.app.remove_component(self)
+
+    def render(self):
+        _, self.window_opened = imgui.begin(
+            'Open file', closable=True, flags=imgui.WINDOW_NO_RESIZE
+        )
+        if not self.window_opened:
+            self.close()
+            imgui.end()
+            return
+
+        imgui.text('Filename')
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##filename', self.filename, self.INPUT_FILENAME_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.filename = text
+
+        imgui.text(self.error_msg)
+        win_width = imgui.get_window_content_region_width()
+        imgui.same_line(win_width - 28)
+
+        if imgui.button('Save'):
+            fn = Path(self.filename)
+            try:
+                # Use this to check whehter there are illegal characters in name
+                is_valid = not fn.is_dir()
+            except OSError:
+                is_valid = False
+
+            if not is_valid:
+                self.error_msg = 'Invalid filename.'
+            elif not fn.exists():
+                self.callback(self.filename)
+                self.close()
+            elif fn.exists():
+                from textwrap import wrap as wrap_text
+
+                self.error_msg = ''
+                msg = (
+                    f'File already exists, are you sure you want to overwrite it?'
+                    f'\n{self.filename}'
+                )
+                self.confirmation_modal = ConfirmationModal(
+                    'Error', msg, lambda: self.callback() or self.close(),
+                )
+            else:
+                # Should not be here...
+                GlobalState().push_error(ValueError('Cannot resolve filename.'))
+                imgui.end()
+                return
+
+        if self.confirmation_modal:
+            self.confirmation_modal.render()
+            if self.confirmation_modal.terminated:
+                self.confirmation_modal = None
+
+        imgui.end()

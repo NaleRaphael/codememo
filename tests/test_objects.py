@@ -1,8 +1,52 @@
+from pathlib import Path
+import json
 import pytest
 
 from codememo.objects import (
     Snippet, Node, NodeLink, NodeIndexLink, NodeCollection
 )
+
+
+@pytest.fixture
+def dummy_snippet_data():
+    data = {
+        'name': 'foo.py',
+        'content': 'def foo():\n    print("foo")',
+        'lang': 'python',
+        'line_start': 5,
+        'path': '~/data/foo.py',
+        'url': 'https://foo.bar/snippet/foo.py',
+    }
+    return data
+
+
+@pytest.fixture
+def dummy_node_data():
+    snippet_data = {
+        'name': 'foo.py',
+        'content': 'def foo():\n    print("foo")',
+        'lang': 'python',
+        'line_start': 5,
+        'path': '~/data/foo.py',
+        'url': 'https://foo.bar/snippet/foo.py',
+    }
+    node_data = {
+        'uuid': '554baf0e-b43a-4a52-a384-161e1f196320',
+        'snippet': snippet_data,
+        'comment': 'just some comment...',
+        'root': None,
+        'leaves': [],
+        'ref_info': None,
+    }
+    return node_data
+
+
+@pytest.fixture
+def dummy_node_collection_data():
+    fn_data = Path(Path(__file__).parent, 'node_collection_data.json')
+    with open(fn_data, 'r') as f:
+        nodes_data = json.load(f)
+    return nodes_data
 
 
 @pytest.fixture
@@ -47,7 +91,35 @@ def dummy_nodes_multiple_tree():
     return nodes
 
 
+class TestSnippet:
+    def test__to_dict(self, dummy_snippet_data):
+        data = dummy_snippet_data
+        snippet = Snippet(
+            data['name'], data['content'], line_start=data.get('line_start'),
+            lang=data.get('lang'), path=data.get('path'), url=data.get('url'),
+        )
+        assert snippet.to_dict() == data
+
+    def test__from_dict(self, dummy_snippet_data):
+        data = dummy_snippet_data
+        snippet = Snippet.from_dict(data)
+        assert snippet.to_dict() == data
+
+
 class TestNode:
+    def test__to_dict(self, dummy_node_data):
+        data = dummy_node_data
+        node = Node(
+            Snippet.from_dict(data['snippet']), comment=data.get('comment'),
+            uuid=data.get('uuid')
+        )
+        assert node.to_dict() == data
+
+    def test__from_dict(self, dummy_node_data):
+        data = dummy_node_data
+        node = Node.from_dict(data)
+        assert node.to_dict() == data
+
     def test__add_leaf__self_reference(self, dummy_nodes):
         A = dummy_nodes[0]
         with pytest.raises(ValueError, match='Self reference'):
@@ -75,6 +147,11 @@ class TestNode:
 
 
 class TestNodeCollection:
+    def test__to_dict(self, dummy_node_collection_data):
+        data = dummy_node_collection_data
+        node_collection = NodeCollection.from_dict(data)
+        assert node_collection.to_dict() == data
+
     def test__resolve_link(self, dummy_nodes_multiple_tree):
         nodes = dummy_nodes_multiple_tree
         node_collection = NodeCollection(nodes)

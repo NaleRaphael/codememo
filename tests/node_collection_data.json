@@ -1,0 +1,58 @@
+{
+  "nodes": [
+    {
+      "uuid": "d741530a-8f76-4f6c-933a-a76fefab907f",
+      "snippet": {
+        "name": "foo.py",
+        "content": "def foo():\n    bar()\n    buzz()\n",
+        "line_start": 1,
+        "lang": "raw",
+        "path": null,
+        "url": null
+      },
+      "comment": null,
+      "root": null,
+      "leaves": [
+        "6921e152-78f7-40ac-9207-8fc73a1c9b26",
+        "0d315dd4-4500-4734-805d-779fe10a6d5e"
+      ],
+      "ref_info": null
+    },
+    {
+      "uuid": "6921e152-78f7-40ac-9207-8fc73a1c9b26",
+      "snippet": {
+        "name": "bar.py",
+        "content": "def bar():\n    print(\"bar\")",
+        "line_start": 57,
+        "lang": "py",
+        "path": null,
+        "url": null
+      },
+      "comment": null,
+      "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
+      "leaves": [],
+      "ref_info": {
+        "ref_start": 2,
+        "ref_stop": null
+      }
+    },
+    {
+      "uuid": "0d315dd4-4500-4734-805d-779fe10a6d5e",
+      "snippet": {
+        "name": "buzz.py",
+        "content": "def buzz():\n    print(\"buzz\")",
+        "line_start": 1,
+        "lang": "cpp",
+        "path": null,
+        "url": null
+      },
+      "comment": null,
+      "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
+      "leaves": [],
+      "ref_info": {
+        "ref_start": 3,
+        "ref_stop": null
+      }
+    }
+  ]
+}

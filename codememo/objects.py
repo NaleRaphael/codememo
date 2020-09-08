@@ -1,3 +1,4 @@
+from uuid import UUID, uuid4
 from .exceptions import NodeRemovalException
 
 
@@ -28,6 +29,9 @@ class LineInfo(object):
             return self.start == val
         else:
             return self.stop >= val >= self.start
+
+    def to_dict(self):
+        return {k: getattr(self, k) for k in self.__slots__}
 
 
 class AbsoluteLineInfo(LineInfo):
@@ -75,26 +79,51 @@ class Snippet(object):
     def line_info(self):
         return AbsoluteLineInfo(self.line_start, self.line_start + self.n_lines - 1)
 
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            data['name'], data['content'], line_start=data.get('line_start'),
+            lang=data.get('lang'), path=data.get('path'), url=data.get('url'),
+        )
+
+    def to_dict(self):
+        return {k: getattr(self, k) for k in self.__slots__}
+
 
 class ReferenceInfo(object):
     """Information of the source which a code snippet should point to."""
-    def __init__(self, src, ref_start, ref_stop=None):
+    def __init__(self, ref_start, ref_stop=None):
         """
         Parameters
         ----------
-        src : snippet
-            A code snippet as the source.
         ref_start : int
             Start line of the reference.
         ref_stop : int
             Stop line of the reference.
         """
-        self.src = src
         self.line_info = RelativeLineInfo(ref_start, stop=ref_stop)
+
+    @property
+    def start(self):
+        return self.line_info.start
+
+    @property
+    def stop(self):
+        return self.line_info.stop
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data['ref_start'], ref_stop=data.get('ref_stop'))
+
+    def to_dict(self):
+        return {
+            'ref_start': self.line_info.start,
+            'ref_stop': self.line_info.stop,
+        }
 
 
 class Node(object):
-    def __init__(self, snippet, comment=None, leaves=None):
+    def __init__(self, snippet, comment=None, uuid=None):
         """
         Parameters
         ----------
@@ -102,8 +131,9 @@ class Node(object):
             An object containing information of code snippet.
         comment : str, optional
             Comment/note of given code snippet.
-        leaves : list of Node, optional
-            Nodes that related to this code snippet.
+        uuid : UUID, optional
+            UUID of this node. It will be generated automatically if it's
+            not given.
         """
         if not isinstance(snippet, Snippet):
             raise TypeError(f'should be an instance of {Snippet}')
@@ -111,18 +141,35 @@ class Node(object):
         self._ref_info = None
         self.snippet = snippet
         self.comment = comment
+        self.uuid = uuid4() if uuid is None else uuid
+        if not isinstance(self.uuid, UUID) and isinstance(self.uuid, str):
+            if isinstance(self.uuid, str):
+                self.uuid = UUID(self.uuid)
+            else:
+                raise TypeError(f'uuid should be an instance of {UUID}')
 
         self.root = None
         self.leaves = []
 
-        if leaves is not None:
-            if not isinstance(leaves, list):
-                raise TypeError(f'should be a list')
-            for v in leaves:
-                self.add_leaf(v)
-
     def __repr__(self):
         return f'<Node "{self.snippet.name}">'
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            Snippet.from_dict(data['snippet']),
+            comment=data.get('comment'), uuid=data.get('uuid')
+        )
+
+    def to_dict(self):
+        return {
+            'uuid': str(self.uuid),
+            'snippet': self.snippet.to_dict(),
+            'comment': self.comment,
+            'root': None if self.root is None else str(self.root.uuid),
+            'leaves': [str(v.uuid) for v in self.leaves],
+            'ref_info': None if self._ref_info is None else self._ref_info.to_dict(),
+        }
 
     @property
     def ref_info(self):
@@ -138,9 +185,7 @@ class Node(object):
         if node and not isinstance(node, Node):
             raise TypeError(f'should be an instance of {Node}')
         self.root = node
-        self.ref_info = ReferenceInfo(
-            node.snippet, ref_start, ref_stop=ref_stop
-        )
+        self.ref_info = ReferenceInfo(ref_start, ref_stop=ref_stop)
 
     def reset_root(self):
         """Reset root of this node.
@@ -428,3 +473,45 @@ class NodeCollection(object):
             layer_collection.append(build_layers(tree, [], 0))
 
         return layer_collection, orphans
+
+    @classmethod
+    def from_dict(cls, data):
+        if 'nodes' not in data:
+            raise ValueError(f'Missing key "nodes" in given data.')
+
+        data_dict = {v['uuid']: v for v in data['nodes']}
+        nodes_dict = {v['uuid']: Node.from_dict(v) for v in data['nodes']}
+
+        for node_uuid, node_data in data_dict.items():
+            root_uuid = node_data['root']
+            leaves_uuid = node_data['leaves']
+
+            for leaf_uuid in leaves_uuid:
+                target_node = nodes_dict[node_uuid]
+                leaf_node = nodes_dict[leaf_uuid]
+                ref_info = ReferenceInfo.from_dict(data_dict[leaf_uuid]['ref_info'])
+                target_node.add_leaf(leaf_node, ref_info.start, ref_stop=ref_info.stop)
+
+                # Validate that root of `leaf_node` is current `target_node`
+                assert leaf_node.root is target_node
+
+        return cls(list(nodes_dict.values()))
+
+    def to_dict(self):
+        return {
+            'nodes': [v.to_dict() for v in self.nodes],
+        }
+
+    @classmethod
+    def load(cls, fn):
+        import json
+
+        with open(fn, 'r') as f:
+            content = json.load(f)
+        return cls.from_dict(content)
+
+    def save(self, fn):
+        import json
+
+        with open(fn, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
