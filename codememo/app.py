@@ -10,7 +10,7 @@ from .components import (
     CodeNodeViewer,
     ErrorMessageModal,
 )
-from .config import FPS, FRAME_UPDATE_INTERVAL
+from .config import AppConfig
 from .interanl import GlobalState
 
 __all__ = ['Application']
@@ -18,6 +18,8 @@ __all__ = ['Application']
 
 class Application(object):
     def __init__(self):
+        self.config = AppConfig.load()
+        self.frame_update_interval = self.config.display.frame_update_interval
         self.window = pyglet.window.Window(width=960, height=540, resizable=True)
         gl.glClearColor(0, 0, 0, 1)
 
@@ -51,7 +53,7 @@ class Application(object):
             # since draw event is triggered by `pyglet.window.event`.
             # However, using `pyglet.clock.schedule_interval(update, 1/fps)`
             # is less efficiently.
-            update(FRAME_UPDATE_INTERVAL)
+            update(self.frame_update_interval)
 
             self.window.clear()
             imgui.render()

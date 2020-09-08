@@ -19,7 +19,7 @@ __all__ = [
     'MenuBar',
     'CodeSnippetWindow',
     'CodeNode',
-    'CodeNodeCreaterWindow',
+    'CodeNodeCreatorWindow',
     'CodeNodeViewer',
     'ErrorMessageModal',
 ]
@@ -86,7 +86,7 @@ class CodeSnippetWindow(ImguiComponent):
     DEFAULT_COMMENT_WINDOW_HEIGHT = 60
     DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
-    def __init__(self, node, max_width=640, max_height=360):
+    def __init__(self, node, max_width=640, max_height=360, **kwargs):
         self.node = node
         snippet = node.snippet
         self.snippet = snippet
@@ -114,6 +114,10 @@ class CodeSnippetWindow(ImguiComponent):
 
         self.is_edit_mode = False
         self.edited_content = ''    # used for caching snippet content for editing
+
+        # Additional settings for text input
+        self.convert_tab_to_spaces = kwargs.get('convert_tab_to_spaces', True)
+        self.tab_to_spaces_number = kwargs.get('tab_to_spaces_number', 4)
 
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
@@ -244,8 +248,21 @@ class CodeSnippetWindow(ImguiComponent):
 
     def display_comment_window(self):
         imgui.push_item_width(-1)
-        changed, text = imgui.input_text_multiline('', self.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5)
+        # TODO: add callback and flag to control whether we should replace tab by spaces
+        changed, text = imgui.input_text_multiline(
+            '##comment', self.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5,
+            flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT,
+        )
+
+        # TODO: Detect whether KEY_TAB is pressed and replace '\t' by spaces.
+        # Since `pyimgui` does not support callbacks for `input_text_*` methods
+        # currently, we have to deliver our own solution for it.
         if changed:
+            # NOTE: In current implementation, result of replacing '\t' by spaces
+            # only shows after user clicking elsewhere. That's why we have to solve
+            # this issue to improve the UX.
+            if self.convert_tab_to_spaces:
+                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.comment = text
         imgui.pop_item_width()
 
@@ -285,9 +302,18 @@ class CodeSnippetWindow(ImguiComponent):
     def _render_edit_mode(self):
         imgui.begin_child('code snippet', 0, -25, border=False)
         imgui.push_item_width(-1)
-        changed, text = imgui.input_text_multiline('', self.edited_content, self.DEFAULT_SNIPPET_BUFFER_SIZE, height=-5)
+
+        changed, text = imgui.input_text_multiline(
+            '', self.edited_content, self.DEFAULT_SNIPPET_BUFFER_SIZE, height=-5,
+            flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT
+        )
         if changed:
+            # NOTE: see also `self.display_comment_window()` for the reason why
+            # we implement this feature in this way.
+            if self.convert_tab_to_spaces:
+                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.edited_content = text
+
         imgui.pop_item_width()
         imgui.end_child()
 
@@ -331,14 +357,17 @@ NODE_SLOT_RADIUS = 4.0
 NODE_WINDOW_PADDING = Vec2(8.0, 8.0)
 
 class CodeNodeComponent(ImguiComponent):
-    def __init__(self, _id, pos, node):
+    def __init__(self, _id, pos, node, **kwargs):
         """
         Parameters
         ----------
         _id : int
-        name : str
+            ID of this node.
         pos : Vec2
+            Initial position of this node on canvas.
         node : codememo.objects.Node
+            A `codememo.objects.Node` instance including necessary information
+            for this node.
         """
         self.id = _id
         self.pos = pos
@@ -347,7 +376,7 @@ class CodeNodeComponent(ImguiComponent):
         self.root = node.root
         self.leaves = node.leaves
         self.name = node.snippet.name
-        self.snippet_window = CodeSnippetWindow(node)
+        self.snippet_window = CodeSnippetWindow(node, **kwargs)
         self.container = None
         self.is_showing_context_menu = False
         self.confirmation_modal = False
@@ -443,7 +472,7 @@ class CodeNodeComponent(ImguiComponent):
                 self.confirmation_modal = None
 
 
-class CodeNodeCreaterWindow(ImguiComponent):
+class CodeNodeCreatorWindow(ImguiComponent):
     """A window for creating node."""
     INPUT_SNIPPET_NAME_MAX_LENGTH = 128
     INPUT_SNIPPET_PATH_MAX_LENGTH = 512
@@ -456,7 +485,7 @@ class CodeNodeCreaterWindow(ImguiComponent):
         '.py': 'python', '.pyx': 'python',
     }
 
-    def __init__(self, app, creation_pos=None):
+    def __init__(self, app, creation_pos=None, **kwargs):
         self.app = app
         self.creation_pos = creation_pos
         self.container = None
@@ -470,6 +499,10 @@ class CodeNodeCreaterWindow(ImguiComponent):
         self.input_start_line = '1'
 
         self.modal_opened = False
+
+        # Additional settings for text input
+        self.convert_tab_to_spaces = kwargs.get('convert_tab_to_spaces', True)
+        self.tab_to_spaces_number = kwargs.get('tab_to_spaces_number', 4)
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -579,6 +612,10 @@ class CodeNodeCreaterWindow(ImguiComponent):
             height=-5, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT
         )
         if changed:
+            # NOTE: see also `CodeSnippetWindow.display_comment_window()` for
+            # the reason why we implement this feature in this way.
+            if self.convert_tab_to_spaces:
+                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.input_snippet = text
         imgui.end_child()
 
@@ -657,7 +694,14 @@ class CodeNodeViewer(ImguiComponent):
         for tree in trees:
             nodes.extend([v for layer in tree for v in layer])
         nodes.extend(orphans)
-        self.node_components = [CodeNodeComponent(i, positions[i], v) for i, v in enumerate(nodes)]
+        init_kwargs = {
+            'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
+            'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
+        }
+        self.node_components = [
+            CodeNodeComponent(i, positions[i], v, **init_kwargs)
+            for i, v in enumerate(nodes)
+        ]
 
         # Set container (viewer) for nodes
         for node in self.node_components:
@@ -767,7 +811,13 @@ class CodeNodeViewer(ImguiComponent):
             mouse_pos = imgui.get_mouse_position()
             if imgui.begin_popup_context_item('context-menu', 2):
                 if imgui.selectable('Create node')[0]:
-                    node_creater = CodeNodeCreaterWindow(self.app, creation_pos=mouse_pos)
+                    init_kwargs = {
+                        'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
+                        'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
+                    }
+                    node_creater = CodeNodeCreatorWindow(
+                        self.app, creation_pos=mouse_pos, **init_kwargs
+                    )
                     node_creater.set_container(self)
                     self.app.add_component(node_creater)
                 imgui.end_popup()
