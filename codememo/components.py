@@ -25,6 +25,7 @@ __all__ = [
     'CodeNodeViewer',
     'ErrorMessageModal',
     'ConfirmationModal',
+    'OpenFileDialog',
     'SaveFileDialog',
 ]
 
@@ -60,6 +61,7 @@ class ImguiComponent(object):
 class MenuBar(ImguiComponent):
     def __init__(self, app):
         self.app = app
+        self.file_dialog = None
 
     def render(self):
         if imgui.begin_main_menu_bar():
@@ -68,7 +70,9 @@ class MenuBar(ImguiComponent):
 
     def render_menu_file(self):
         if imgui.begin_menu('File', True):
-            self._menu_file__import_snippet()
+            self._menu_file__new_project()
+            self._menu_file__open_project()
+            imgui.separator()
             self._menu_file__quit()
             imgui.end_menu()
 
@@ -77,10 +81,25 @@ class MenuBar(ImguiComponent):
         if clicked:
             exit(1)
 
-    def _menu_file__import_snippet(self):
-        clicked, selected = imgui.menu_item('Import Snippet', 'Ctrl+I')
-        # TODO: implement this
-        raise NotImplementedError
+    def _menu_file__new_project(self):
+        clicked, selected = imgui.menu_item('New Project', 'Ctrl+N')
+        if clicked:
+            self.app.add_component(CodeNodeViewer(self.app, NodeCollection([])))
+
+    def _menu_file__open_project(self):
+        clicked, selected = imgui.menu_item('Open Project', 'Ctrl+O')
+
+        if clicked:
+            def open_project(fn):
+                try:
+                    node_collection = NodeCollection.load(fn)
+                except Exception as ex:
+                    GlobalState().push_error(ex)
+                else:
+                    viewer = CodeNodeViewer(self.app, node_collection)
+                    self.app.add_component(viewer)
+
+            self.file_dialog = OpenFileDialog(self.app, open_project)
 
 
 class CodeSnippetWindow(ImguiComponent):
@@ -215,7 +234,7 @@ class CodeSnippetWindow(ImguiComponent):
                     self.edited_content = self.node.snippet.content
 
                 # Clear highlighted lines
-                if imgui.selectable('Clear highlight')[0]:
+                if imgui.selectable('Clear highlight')[0] and self.reference_info:
                     self.reference_info = None
 
                 # Add the following menu items only when lines are selected
@@ -335,6 +354,7 @@ class CodeSnippetWindow(ImguiComponent):
             self.is_edit_mode = False
             self.node.snippet.content = self.edited_content
             self.rows = self.node.snippet.content.splitlines()
+            self.selected = [False] * len(self.rows)
             self.edited_content = ''
         elif is_btn_cancel_clicked:
             self.is_edit_mode = False
@@ -465,7 +485,7 @@ class CodeNodeComponent(ImguiComponent):
             if imgui.selectable('Remove node')[0]:
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
-                    f'Are you sure you want to delete this node \n"{self.name}"?',
+                    f'Are you sure you want to remove this node \n"{self.name}"?',
                     lambda: self.container.remove_node_component(self),
                 )
             imgui.end_popup()
@@ -785,8 +805,8 @@ class CodeNodeViewer(ImguiComponent):
         if clicked:
             self.file_dialog = SaveFileDialog(self.app, self.save_data)
 
-    def handle_menu_item_quit(self):
-        clicked, selected = imgui.menu_item('Quit')
+    def handle_menu_item_close(self):
+        clicked, selected = imgui.menu_item('Close')
         if clicked:
             self.close()
 
@@ -949,7 +969,7 @@ class CodeNodeViewer(ImguiComponent):
             imgui.pop_id()
 
     def draw_node_list(self):
-        imgui.begin_child('node_list', 100, 0)
+        imgui.begin_child('node_list', 100, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
         imgui.text('nodes')
         imgui.separator()
 
@@ -1004,7 +1024,8 @@ class CodeNodeViewer(ImguiComponent):
         if imgui.begin_menu('File'):
             self.handle_menu_item_save()    # overwrite the original file
             self.handle_menu_item_save_as()
-            self.handle_menu_item_quit()
+            imgui.separator()
+            self.handle_menu_item_close()
             imgui.end_menu()
         if imgui.begin_menu('View'):
             self.handle_menu_item_show_grid()
@@ -1123,6 +1144,79 @@ class ConfirmationModal(ImguiComponent):
             imgui.end_popup()
 
 
+class OpenFileDialog(ImguiComponent):
+    INPUT_FILENAME_MAX_LENGTH = 256
+
+    def __init__(self, app, callback):
+        """
+        app : codememo.Application
+            Reference of running application.
+        callback : function
+            A callback function which will be invoked after a file is selected.
+            Note that this dialog will be closed then.
+            Passed arguments: [filename: str]
+        """
+        self.app = app
+        self.filename = str(Path('').absolute())
+        self.callback = callback
+        self.error_msg = ''
+        self.window_opened = False
+        self.terminated = False
+        self.app.add_component(self)
+
+    def close(self):
+        self.terminated = True
+        self.app.remove_component(self)
+
+    def render(self):
+        _, self.window_opened = imgui.begin(
+            'Open file', closable=True,
+            flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_SAVED_SETTINGS
+        )
+        if not self.window_opened:
+            self.close()
+            imgui.end()
+            return
+
+        imgui.set_window_size(320, 95)
+
+        imgui.text('Filename')
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##filename', self.filename, self.INPUT_FILENAME_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.filename = text
+
+        imgui.text(self.error_msg)
+        win_width = imgui.get_window_content_region_width()
+        imgui.same_line(win_width - 28)
+
+        if imgui.button('Open'):
+            fn = Path(self.filename)
+            try:
+                # Use this to check whehter there are illegal characters in name
+                is_valid = not fn.is_dir()
+            except OSError:
+                is_valid = False
+
+            if not is_valid:
+                self.error_msg = 'Invalid filename.'
+            elif fn.exists():
+                self.callback(self.filename)
+                self.close()
+            elif not fn.exists():
+                self.error_msg = 'File does not exist.'
+            else:
+                # Should not be here...
+                GlobalState().push_error(ValueError('Cannot resolve filename.'))
+                imgui.end()
+                return
+
+        imgui.end()
+
+
 class SaveFileDialog(ImguiComponent):
     INPUT_FILENAME_MAX_LENGTH = 256
 
@@ -1151,12 +1245,15 @@ class SaveFileDialog(ImguiComponent):
 
     def render(self):
         _, self.window_opened = imgui.begin(
-            'Open file', closable=True, flags=imgui.WINDOW_NO_RESIZE
+            'Save file', closable=True,
+            flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_SAVED_SETTINGS
         )
         if not self.window_opened:
             self.close()
             imgui.end()
             return
+
+        imgui.set_window_size(320, 95)
 
         imgui.text('Filename')
         imgui.push_item_width(-1)

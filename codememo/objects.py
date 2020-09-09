@@ -1,5 +1,5 @@
 from uuid import UUID, uuid4
-from .exceptions import NodeRemovalException
+from .exceptions import FileLoadingException, NodeRemovalException
 
 
 __all__ = ['LineInfo', 'Snippet', 'ReferenceInfo', 'Node', 'NodeCollection']
@@ -506,9 +506,17 @@ class NodeCollection(object):
     def load(cls, fn):
         import json
 
-        with open(fn, 'r') as f:
-            content = json.load(f)
-        return cls.from_dict(content)
+        try:
+            with open(fn, 'r') as f:
+                content = json.load(f)
+            obj = cls.from_dict(content)
+        except KeyError as ex_key:
+            msg = f'Failed to load this file, there are missing keys: {ex_key}'
+            raise FileLoadingException(msg) from ex_key
+        except json.JSONDecodeError as ex_json_decode:
+            msg = f'Failed to load this file while decoding: {ex_json_decode}'
+            raise FileLoadingException(msg) from ex_json_decode
+        return obj
 
     def save(self, fn):
         import json
