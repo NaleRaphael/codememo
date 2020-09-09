@@ -62,6 +62,8 @@ class AppConfig(ConfigBase):
     def __init__(self, **kwargs):
         super(AppConfig, self).__init__()
         kwargs = {} if kwargs is None else kwargs
+        self.dir_config = AppDefaults.dir_config
+        self.fn_config = AppDefaults.fn_config
         self.display = DisplayConfig(
             **kwargs.pop(DisplayConfig.name, {})
         )

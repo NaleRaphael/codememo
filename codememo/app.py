@@ -41,11 +41,14 @@ class Application(object):
     def init_draw_process(self):
         def update(dt):
             imgui.new_frame()
-            for component in self.imgui_components:
-                while self._internal_state.error_occured:
-                    error = self._internal_state.pop_error()
-                    self.add_component(ErrorMessageModal(self, str(error)))
-                component.render()
+            try:
+                for component in self.imgui_components:
+                    while self._internal_state.error_occured:
+                        error = self._internal_state.pop_error()
+                        self.add_component(ErrorMessageModal(self, str(error)))
+                    component.render()
+            except Exception as ex:
+                self.dump_data(ex)
 
         @self.window.event
         def on_draw():
@@ -76,6 +79,31 @@ class Application(object):
     def remove_component(self, component):
         idx = self.imgui_components.index(component)
         self._removed_components.append(self.imgui_components.pop(idx))
+
+    def dump_data(self, error):
+        """Dump data if unexpected error occured."""
+        from pathlib import Path
+        from datetime import datetime
+        import traceback
+
+        crash_time = datetime.now().strftime('%Y%m%d-%H%M%S')
+        dir_dump = Path(self.config.dir_config, f'dump_{crash_time}')
+        dir_dump.mkdir(parents=True, exist_ok=True)
+
+        serial_num = 0
+        for component in self.imgui_components:
+            if isinstance(component, CodeNodeViewer):
+                if component.fn_src is None:
+                    fn = f'untitled_{serial_num}.json'
+                    serial_num += 1
+                else:
+                    fn = Path(component.fn_src).with_suffix('.json').name
+                component.save_data(str(Path(dir_dump, fn)))
+
+        fn_log = str(Path(dir_dump, 'traceback.txt'))
+        with open(fn_log, 'w') as f:
+            traceback.print_tb(error.__traceback__, limit=None, file=f)
+            f.write(str(error))
 
     def finalize(self):
         while self._removed_components:

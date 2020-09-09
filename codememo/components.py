@@ -96,7 +96,7 @@ class MenuBar(ImguiComponent):
                 except Exception as ex:
                     GlobalState().push_error(ex)
                 else:
-                    viewer = CodeNodeViewer(self.app, node_collection)
+                    viewer = CodeNodeViewer(self.app, node_collection, fn_src=fn)
                     self.app.add_component(viewer)
 
             self.file_dialog = OpenFileDialog(self.app, open_project)
@@ -681,6 +681,8 @@ class CodeNodeViewer(ImguiComponent):
         """
         self.app = app
         self.fn_src = fn_src
+        fn = 'untitled' if fn_src is None else Path(fn_src).with_suffix('').name
+        self.window_name = f'CodeNode Viewer: {fn}'
         self.node_collection = node_collection
         self.node_components = []
         self.links = []
@@ -711,6 +713,10 @@ class CodeNodeViewer(ImguiComponent):
 
     def save_data(self, fn):
         self.node_collection.save(fn)
+
+        # Update window name
+        self.fn_src = fn
+        self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name}"
 
     def init_nodes_and_links(self):
         trees, orphans = self.node_collection.resolve_tree()
@@ -1042,7 +1048,9 @@ class CodeNodeViewer(ImguiComponent):
         self.app = None
 
     def render(self):
-        _, self.opened = imgui.begin('CodeNodeViewer', closable=True, flags=imgui.WINDOW_MENU_BAR)
+        _, self.opened = imgui.begin(
+            self.window_name, closable=True, flags=imgui.WINDOW_MENU_BAR
+        )
         if not self.opened:
             imgui.end()
             self.close()
