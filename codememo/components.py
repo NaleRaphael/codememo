@@ -13,7 +13,7 @@ from .events import NodeEvent, NodeEventPublisher
 from .interanl import GlobalState
 
 CODE_CHAR_WIDTH = 8
-CODE_CHAR_HEIGHT = 17
+CODE_CHAR_HEIGHT = 14
 
 
 __all__ = [
@@ -122,10 +122,11 @@ class CodeSnippetWindow(ImguiComponent):
 
         n_digit = len('%i' % (len(self.rows) + snippet.line_start - 1))
         snippet_height = (len(self.rows) + 2) * CODE_CHAR_HEIGHT
+        self._snippet_height = snippet_height
         self.width_lineno = CODE_CHAR_WIDTH * n_digit
         self.width_code = max([len(v) for v in self.rows]) * CODE_CHAR_WIDTH
         self.width = min(self.width_lineno + self.width_code + 30, max_width)
-        self.height = min(snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT, max_height)
+        self.height = min(snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT + 20, max_height)
 
         self.selected = [False] * len(self.rows)
         self.reference_info = None
@@ -300,7 +301,11 @@ class CodeSnippetWindow(ImguiComponent):
             h_snippet = self.snippet_window_height
         else:
             h_snippet = current_window_size.y - 60
-        imgui.begin_child('code snippet', -5, h_snippet, border=True, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        imgui.set_next_window_content_size(self.width_code, self._snippet_height)
+        imgui.begin_child(
+            'code snippet', -5, h_snippet, border=True,
+            flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR
+        )
         self.display_table()
         imgui.end_child()
 
