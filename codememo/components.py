@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import imgui
-from imgui import Vec2 as _Vec2
+from .vendor import imgui
+from .vendor.imgui import Vec2 as _Vec2
 
 from .objects import (
     Snippet,

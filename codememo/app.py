@@ -1,7 +1,8 @@
-import imgui
-from imgui.integrations.pyglet import create_renderer
 import pyglet
 from pyglet import gl
+
+from .vendor import imgui
+from .vendor.imgui.integrations.pyglet import create_renderer
 
 from .components import (
     ImguiComponent,
