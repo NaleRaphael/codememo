@@ -34,13 +34,19 @@ if USE_FORKED_IMGUI:
         if sys.platform in ('cygwin', 'win32'):
             fn_candidates = list(dir_imgui.rglob('core.*.pyd'))
         else:
-            fn_candidates = list(dir_imgui.rglob('core.so'))
+            fn_candidates = list(dir_imgui.rglob('core.*.so'))
 
-        if len(fn_candidates) != 1:
+        if len(fn_candidates) > 1:
             msg = (
                 'There are multiple "core.[pyd/so]" files in the forked repository, '
                 'it might resulted by unclean build event before. You can try to '
                 'remove them all and try again.'
+            )
+            raise ImportError(msg)
+        elif len(fn_candidates) == 0:
+            msg = (
+                '"core.[pyd/so]" is not found. Forked repository `pyimgui` is '
+                'probably not built sucessfully. You can try to rebuild it.'
             )
             raise ImportError(msg)
 
