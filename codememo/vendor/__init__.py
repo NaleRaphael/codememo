@@ -1,9 +1,30 @@
-# TODO: make this configurable
-USE_FORKED_IMGUI = True
+try:
+    from .settings import USE_FORKED_PYIMGUI
+except ImportError as ex_use_forked_pyimgui:
+    try:
+        import imgui
+    except ImportError:
+        msg = (
+            'Either original version of `pyimgui` (swistakm/pyimgui)'
+            'or forked version of `pyimgui` (naleraphael/pyimgui) was '
+            'installed, there is probably something wrong with the '
+            'package installation.'
+        )
+        raise ImportError(msg) from ex_use_forked_pyimgui
+
+    import warnings
+    msg = (
+        '"setting.py" are not available, fallback to use original '
+        'version of `pyimgui`.'
+    )
+    warnings.warn(msg, UserWarning)
+    USE_FORKED_PYIMGUI = False
+    del warnings
+
 
 import sys
 
-if USE_FORKED_IMGUI:
+if USE_FORKED_PYIMGUI:
     # ----- Load forked verion of `pyimgui` -----
     def load_pyimgui():
         from pathlib import Path
