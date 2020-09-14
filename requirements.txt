@@ -1,1 +1,1 @@
-imgui[pyglet]
+imgui[pyglet]>=1.2.0
