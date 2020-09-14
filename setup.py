@@ -3,14 +3,13 @@ Currently, it's recommended to install this package with forked version
 of `pyimgui` in order to enable text indentation for `input_text_multiline`
 widget. You can use the following command to install:
 ```bash
-$ pip install -v --install-option="--use-forked-pyimgui" ./
+$ pip install -v --global-option="--use-forked-pyimgui" ./
 ```
 """
 import os, shlex, sys, site
 import subprocess as sp
 from pathlib import Path
 from setuptools import setup, find_packages
-from setuptools.command.install import install
 
 
 THIS_DIR = Path(__file__).parent
@@ -19,35 +18,6 @@ MAJOR = 0
 MINOR = 1
 MICRO = 0
 VERSION = '{}.{}.{}'.format(MAJOR, MINOR, MICRO)
-
-
-class CustomInstallCommand(install):
-    user_options = install.user_options + [
-        ('use-forked-pyimgui', None, '<Instsall forked pyimgui>'),
-    ]
-
-    def initialize_options(self):
-        install.initialize_options(self)
-        self.use_forked_pyimgui = None
-
-    def finalize_options(self):
-        install.finalize_options(self)
-
-    def run(self):
-        self.pre_install()
-        install.run(self)
-        self.post_install()
-
-    def pre_install(self):
-        if self.use_forked_pyimgui:
-            build_forked_pyimgui()
-            write_vendor_settings(True)
-        else:
-            write_requirements()
-            write_vendor_settings(False)
-
-    def post_install(self):
-        pass
 
 
 def build_forked_pyimgui():
@@ -134,6 +104,16 @@ def setup_package():
 
     desc = "A tool to help you trace code."
 
+    if '--use-forked-pyimgui' in sys.argv:
+        sys.argv.remove('--use-forked-pyimgui')
+        build_forked_pyimgui()
+        write_vendor_settings(True)
+        data_files = prepare_data_files()
+    else:
+        write_requirements()
+        write_vendor_settings(False)
+        data_files = []
+
     metadata = dict(
         name='codememo',
         version=VERSION,
@@ -143,7 +123,7 @@ def setup_package():
         url='https://github.com/naleraphael/codememo',
         packages=find_packages(exclude=excluded),
         package_dir={'codememo': 'codememo'},
-        data_files=prepare_data_files(),
+        data_files=data_files,
         install_requires=get_requirements(),
         classifiers=[
             'Programming Language :: Python :: 3',
@@ -151,7 +131,6 @@ def setup_package():
         ],
         python_requires='>=3.6',
         license='MIT',
-        cmdclass={'install': CustomInstallCommand}
     )
 
     setup(**metadata)
