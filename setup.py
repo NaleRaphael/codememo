@@ -3,7 +3,7 @@ Currently, it's recommended to install this package with forked version
 of `pyimgui` in order to enable text indentation for `input_text_multiline`
 widget. You can use the following command to install:
 ```bash
-$ pip install -v --global-option="--use-forked-pyimgui" ./
+$ pip install -v --install-option="--use-forked-pyimgui" ./
 ```
 """
 import os, shlex, sys, site
