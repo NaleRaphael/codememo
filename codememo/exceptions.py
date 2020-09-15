@@ -1,6 +1,7 @@
 __all__ = [
     'FileLoadingException',
     'NodeRemovalException',
+    'NodeReferenceException',
 ]
 
 
@@ -9,4 +10,8 @@ class FileLoadingException(Exception):
 
 
 class NodeRemovalException(Exception):
+    pass
+
+
+class NodeReferenceException(Exception):
     pass

@@ -251,10 +251,10 @@ class CodeSnippetWindow(ImguiComponent):
 
                 # Add the following menu items only when lines are selected
                 if is_any_row_selected:
-                    if imgui.selectable('Add reference')[0]:
+                    if imgui.selectable('Add leaf reference')[0]:
                         ref_start, ref_stop = self.get_selected_lines()
                         event_args = dict(
-                            src_node=self.node,
+                            root_node=self.node,
                             ref_start=ref_start,
                             ref_stop=ref_stop,
                         )
@@ -421,14 +421,9 @@ class CodeNodeComponent(ImguiComponent):
         self.snippet_window.event_publisher.register(self.container)
 
     def handle_event__add_reference(self, event):
-        try:
-            src_node = event.get('src_node')
-            kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
-            idx = self.container.node_collection.nodes.index(src_node)
-            self.container.node_collection.nodes[idx].add_leaf(self.node, **kwargs)
-            self.container.init_nodes_and_links()
-        except Exception as ex:
-            GlobalState().push_error(ex)
+        root = event.get('root_node')
+        kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
+        self.container.add_leaf_reference(root, self.node, **kwargs)
 
     def render(self, draw_list, offset):
         assert isinstance(self.container, CodeNodeViewer), (
@@ -484,6 +479,13 @@ class CodeNodeComponent(ImguiComponent):
 
         self.is_showing_context_menu = imgui.begin_popup_context_item('node-context-menu', 2)
         if self.is_showing_context_menu:
+            if self.node.root is not None and imgui.selectable('Remove root reference')[0]:
+                # Can be used to reset reference_info when snippet are modified
+                self.confirmation_modal = ConfirmationModal(
+                    'Confirm',
+                    'Are you sure you want to remove root reference of this node?',
+                    lambda: self.container.remove_root_reference(self.node),
+                )
             if imgui.selectable('Remove node')[0]:
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
@@ -750,6 +752,20 @@ class CodeNodeViewer(ImguiComponent):
         # Update window name
         self.fn_src = fn
         self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name}"
+
+    def add_leaf_reference(self, root, target, **kwargs):
+        try:
+            self.node_collection.add_leaf_reference(root, target, **kwargs)
+            self.init_nodes_and_links()
+        except Exception as ex:
+            GlobalState().push_error(ex)
+
+    def remove_root_reference(self, node):
+        try:
+            self.node_collection.remove_root_reference(node)
+            self.init_nodes_and_links()
+        except Exception as ex:
+            GlobalState().push_error(ex)
 
     def init_nodes_and_links(self):
         trees, orphans = self.node_collection.resolve_tree()

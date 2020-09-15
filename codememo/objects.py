@@ -1,5 +1,5 @@
 from uuid import UUID, uuid4
-from .exceptions import FileLoadingException, NodeRemovalException
+from .exceptions import FileLoadingException, NodeRemovalException, NodeReferenceException
 
 
 __all__ = ['LineInfo', 'Snippet', 'ReferenceInfo', 'Node', 'NodeCollection']
@@ -262,11 +262,24 @@ class Node(object):
         self.leaves.append(node)
 
     def remove_leaf(self, node):
+        """Remove leaf node from this node.
+
+        Parameters
+        ----------
+        node : Node
+            Leaf node to be removed.
+        """
         idx = self.leaves.index(node)
-        self.leaves.pop(idx)
-        node.reset_root()
+        self.remove_leaf_by_index(idx)
 
     def remove_leaf_by_index(self, idx):
+        """Remove leaf node from this node by given index.
+
+        Parameters
+        ----------
+        idx : int
+            Index of leaf node to be removed.
+        """
         node = self.leaves.pop(idx)
         node.reset_root()
 
@@ -329,6 +342,9 @@ class NodeCollection(object):
     def __init__(self, nodes):
         self.nodes = nodes
 
+    def __getitem__(self, idx):
+        return self.nodes[idx]
+
     def index(self, node):
         try:
             target_index = self.nodes.index(node)
@@ -336,7 +352,32 @@ class NodeCollection(object):
             target_index = -1
         return target_index
 
+    def add_leaf_reference(self, root, target, ref_start=None, ref_stop=None):
+        """Add a leaf node (`target`) to the root node.
+
+        Parameters
+        ----------
+        root : Node
+            Root node to add a leaf node.
+        target : Node
+            Leaf node to be added to given root node.
+        ref_start : int, optional
+        ref_stop : int, optional
+            Optional arguments for `Node.add_leaf()`.
+        """
+        if target.root is not None:
+            raise NodeReferenceException('there is already an existing root in target node')
+        idx_root = self.nodes.index(root)
+        self.nodes[idx_root].add_leaf(target, ref_start=ref_start, ref_stop=ref_stop)
+
     def remove_node(self, target):
+        """Remove node from this collection.
+
+        Parameters
+        ----------
+        target : Node
+            Target node to be removed.
+        """
         target_index = self.index(target)
         if target_index == -1:
             raise NodeRemovalException('node {target} does not exist in this collection')
@@ -350,6 +391,20 @@ class NodeCollection(object):
         root = target.root
         if root is not None:
             root.remove_leaf(target)
+
+    def remove_root_reference(self, target):
+        """Remove root reference (a.k.a. root node) of given node.
+
+        Parameters
+        ----------
+        target : Node
+            Target node to be removed its root.
+        """
+        root = target.root
+        if root is None:
+            raise NodeRemovalException(f'given node {target} does not have a root.')
+        idx_root = self.index(root)
+        self.nodes[idx_root].remove_leaf(target)
 
     def resolve_links(self):
         """Returns list of `NodeLink` objects."""
