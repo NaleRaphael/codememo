@@ -1,4 +1,4 @@
-from .app import Application
+from codememo.app import Application
 
 
 def launch_app():

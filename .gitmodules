@@ -1,0 +1,3 @@
+[submodule "codememo/vendor/pyimgui"]
+	path = codememo/vendor/pyimgui
+	url = https://github.com/NaleRaphael/pyimgui.git

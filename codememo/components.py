@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import imgui
-from imgui import Vec2 as _Vec2
+from .vendor import imgui
+from .vendor.imgui import Vec2 as _Vec2
 
 from .objects import (
     Snippet,
@@ -143,6 +143,17 @@ class CodeSnippetWindow(ImguiComponent):
         self.convert_tab_to_spaces = kwargs.get('convert_tab_to_spaces', True)
         self.tab_to_spaces_number = kwargs.get('tab_to_spaces_number', 4)
 
+        self.input_text_callback_flags = (
+            imgui.INPUT_TEXT_ALLOW_TAB_INPUT |
+            imgui.INPUT_TEXT_CALLBACK_ALWAYS |
+            imgui.INPUT_TEXT_CALLBACK_CHAR_FILTER |
+            imgui.INPUT_TEXT_CALLBACK_RESIZE
+        )
+        self.input_text_callback_config = imgui.core.InputTextCallbackConfig(
+            convert_tab_to_spaces=self.convert_tab_to_spaces,
+            tab_to_spaces_number=self.tab_to_spaces_number,
+        )
+
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
 
@@ -272,21 +283,11 @@ class CodeSnippetWindow(ImguiComponent):
 
     def display_comment_window(self):
         imgui.push_item_width(-1)
-        # TODO: add callback and flag to control whether we should replace tab by spaces
         changed, text = imgui.input_text_multiline(
             '##comment', self.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5,
-            flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT,
+            flags=self.input_text_callback_flags, callback_config=self.input_text_callback_config
         )
-
-        # TODO: Detect whether KEY_TAB is pressed and replace '\t' by spaces.
-        # Since `pyimgui` does not support callbacks for `input_text_*` methods
-        # currently, we have to deliver our own solution for it.
         if changed:
-            # NOTE: In current implementation, result of replacing '\t' by spaces
-            # only shows after user clicking elsewhere. That's why we have to solve
-            # this issue to improve the UX.
-            if self.convert_tab_to_spaces:
-                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.comment = text
         imgui.pop_item_width()
 
@@ -330,18 +331,14 @@ class CodeSnippetWindow(ImguiComponent):
     def _render_edit_mode(self):
         imgui.begin_child('code snippet', 0, -25, border=False)
         imgui.push_item_width(-1)
-
         changed, text = imgui.input_text_multiline(
-            '', self.edited_content, self.DEFAULT_SNIPPET_BUFFER_SIZE, height=-5,
-            flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT
+            '##code-snippet-content', self.edited_content,
+            self.DEFAULT_SNIPPET_BUFFER_SIZE, height=-5,
+            flags=self.input_text_callback_flags,
+            callback_config=self.input_text_callback_config,
         )
         if changed:
-            # NOTE: see also `self.display_comment_window()` for the reason why
-            # we implement this feature in this way.
-            if self.convert_tab_to_spaces:
-                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.edited_content = text
-
         imgui.pop_item_width()
         imgui.end_child()
 
@@ -504,7 +501,8 @@ class CodeNodeComponent(ImguiComponent):
 class CodeNodeCreatorWindow(ImguiComponent):
     """A window for creating node."""
     INPUT_SNIPPET_NAME_MAX_LENGTH = 128
-    INPUT_SNIPPET_PATH_MAX_LENGTH = 512
+    INPUT_SNIPPET_PATH_MAX_LENGTH = 256     # should depend on OS
+    INPUT_SNIPPET_URL_MAX_LENGTH = 2048
     INPUT_SNIPPET_CONTENT_MAX_LENGTH = 65536
     INPUT_START_LINE_MAX_LENGTH = 16
     SUPPORTED_LANGUAGES = {
@@ -523,6 +521,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
 
         self.input_snippet_name = ''
         self.input_snippet_path = ''
+        self.input_snippet_url = ''
         self.input_language_index = self.valid_languages.index('raw')
         self.input_snippet = ''
         self.input_start_line = '1'
@@ -532,6 +531,17 @@ class CodeNodeCreatorWindow(ImguiComponent):
         # Additional settings for text input
         self.convert_tab_to_spaces = kwargs.get('convert_tab_to_spaces', True)
         self.tab_to_spaces_number = kwargs.get('tab_to_spaces_number', 4)
+
+        self.input_text_callback_flags = (
+            imgui.INPUT_TEXT_ALLOW_TAB_INPUT |
+            imgui.INPUT_TEXT_CALLBACK_ALWAYS |
+            imgui.INPUT_TEXT_CALLBACK_CHAR_FILTER |
+            imgui.INPUT_TEXT_CALLBACK_RESIZE
+        )
+        self.input_text_callback_config = imgui.core.InputTextCallbackConfig(
+            convert_tab_to_spaces=self.convert_tab_to_spaces,
+            tab_to_spaces_number=self.tab_to_spaces_number,
+        )
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -553,6 +563,8 @@ class CodeNodeCreatorWindow(ImguiComponent):
         snippet = Snippet(
             self.input_snippet_name, self.input_snippet,
             line_start=None, lang=lang,
+            path=self.input_snippet_path,
+            url=self.input_snippet_url,
         )
         node = Node(snippet)
         event_args = dict(node=node, node_pos=self.creation_pos)
@@ -593,6 +605,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
             '##snippet-name', self.input_snippet_name, self.INPUT_SNIPPET_NAME_MAX_LENGTH,
             flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
         )
+        imgui.pop_item_width()
         if changed:
             self.input_snippet_name = text
 
@@ -604,6 +617,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         clicked, current = imgui.combo(
             '##language', self.input_language_index, self.valid_languages
         )
+        imgui.pop_item_width()
         if clicked:
             self.input_language_index = current
 
@@ -613,8 +627,19 @@ class CodeNodeCreatorWindow(ImguiComponent):
         changed, text = imgui.input_text(
             '##path', self.input_snippet_path, self.INPUT_SNIPPET_PATH_MAX_LENGTH
         )
+        imgui.pop_item_width()
         if changed:
             self.input_snippet_path = text
+
+        imgui.text('URL:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##url', self.input_snippet_url, self.INPUT_SNIPPET_URL_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_snippet_url = text
 
         imgui.text('Start line:')
         imgui.same_line()
@@ -623,6 +648,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
             '##start-line', self.input_start_line, self.INPUT_START_LINE_MAX_LENGTH,
             flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
         )
+        imgui.pop_item_width()
         if changed:
             if self._check_input_number(text):
                 self.input_start_line = text
@@ -637,14 +663,11 @@ class CodeNodeCreatorWindow(ImguiComponent):
         imgui.text('Snippet:')
         imgui.push_item_width(-1)
         changed, text = imgui.input_text_multiline(
-            '##snippet', self.input_snippet, self.INPUT_SNIPPET_CONTENT_MAX_LENGTH,
-            height=-5, flags=imgui.INPUT_TEXT_ALLOW_TAB_INPUT
+            '##snippet', self.input_snippet, self.INPUT_SNIPPET_CONTENT_MAX_LENGTH, height=-5,
+            flags=self.input_text_callback_flags, callback_config=self.input_text_callback_config
         )
+        imgui.pop_item_width()
         if changed:
-            # NOTE: see also `CodeSnippetWindow.display_comment_window()` for
-            # the reason why we implement this feature in this way.
-            if self.convert_tab_to_spaces:
-                text = text.replace('\t', ' ' * self.tab_to_spaces_number)
             self.input_snippet = text
         imgui.end_child()
 
@@ -799,6 +822,7 @@ class CodeNodeViewer(ImguiComponent):
         imgui.push_item_width(120.0)
 
     def finalize_canvas(self):
+        imgui.pop_item_width()
         imgui.end_child()
 
     def handle_menu_item_save(self):
