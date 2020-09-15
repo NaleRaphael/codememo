@@ -255,9 +255,15 @@ class Node(object):
         if node is self:
             msg = 'Self reference: given leaf node is this node itself'
             raise ValueError(msg)
-        if node is self.root:
-            msg = 'Circular reference: given node is already the root of this node'
-            raise ValueError(msg)
+
+        # Detect whether there is a circular reference
+        temp_root = self.root
+        while temp_root is not None:
+            if node is temp_root:
+                msg = 'Circular reference: given node is already the root of this node'
+                raise ValueError(msg)
+            temp_root = temp_root.root
+
         node.set_root(self, ref_start, ref_stop=ref_stop)
         self.leaves.append(node)
 
@@ -368,7 +374,10 @@ class NodeCollection(object):
         if target.root is not None:
             raise NodeReferenceException('there is already an existing root in target node')
         idx_root = self.nodes.index(root)
-        self.nodes[idx_root].add_leaf(target, ref_start=ref_start, ref_stop=ref_stop)
+        try:
+            self.nodes[idx_root].add_leaf(target, ref_start=ref_start, ref_stop=ref_stop)
+        except ValueError as ex_val:
+            raise NodeReferenceException(str(ex_val)) from ex_val
 
     def remove_node(self, target):
         """Remove node from this collection.

@@ -430,6 +430,10 @@ class CodeNodeComponent(ImguiComponent):
             f'require a container {CodeNodeViewer} to render, got {self.container}'
         )
 
+        # TODO: rewrite this with a better approach
+        is_selecting_root_node = 'event__add_reference' in self.container.state_cache
+        can_be_added_as_reference = self.node.root is None and is_selecting_root_node
+
         node_rect_min = Vec2(*(offset + self.pos))
 
         # Display node contents first
@@ -460,7 +464,7 @@ class CodeNodeComponent(ImguiComponent):
         self.snippet_window.render()
 
         # Handle event of adding reference node
-        if self.container.state_cache:
+        if self.container.state_cache and can_be_added_as_reference:
             if imgui.is_item_clicked():
                 event = self.container.state_cache['event__add_reference']
                 self.handle_event__add_reference(event)
@@ -472,7 +476,9 @@ class CodeNodeComponent(ImguiComponent):
         node_bg_color = imgui.get_color_u32_rgba(0.7, 0.3, 0.3, 1) if (
             self.container.check_node_activated(self)
         ) else imgui.get_color_u32_rgba(0.25, 0.25, 0.25, 1)
-        node_fg_color = imgui.get_color_u32_rgba(0.5, 0.5, 0.5, 1)
+        node_fg_color = imgui.get_color_u32_rgba(0.2, 0.8, 0.4, 1) if (
+            can_be_added_as_reference
+        ) else imgui.get_color_u32_rgba(0.5, 0.5, 0.5, 1)
 
         draw_list.add_rect_filled(*node_rect_min, *node_rect_max, node_bg_color, 4.0)
         draw_list.add_rect(*node_rect_min, *node_rect_max, node_fg_color, 4.0)
