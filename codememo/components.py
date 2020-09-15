@@ -709,8 +709,13 @@ class CodeNodeViewer(ImguiComponent):
         """
         self.app = app
         self.fn_src = fn_src
+
+        # NOTE: We should avoid duplicate of window name (identifier) because
+        # it relates to the focus mechanism. See also the implementation of
+        # `CodeNodeViewer.handle_event__add_reference()`
         fn = 'untitled' if fn_src is None else Path(fn_src).with_suffix('').name
         self.window_name = f'CodeNode Viewer: {fn}'
+
         self.node_collection = node_collection
         self.node_components = []
         self.links = []
@@ -928,10 +933,12 @@ class CodeNodeViewer(ImguiComponent):
         else:
             self.reset_panning_delta()
 
+    # TODO: Replace name-based handler resolution with a decorator to mark
+    # this method as a valid event handler.
     # event handler for "add_reference"
     def handle_event__add_reference(self, event):
         self.state_cache['event__add_reference'] = event
-        imgui.set_window_focus_labeled('CodeNodeViewer')
+        imgui.set_window_focus_labeled(self.window_name)
 
     def handle_event__create_node(self, event):
         node = event.get('node')
