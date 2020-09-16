@@ -2,7 +2,6 @@ import pyglet
 from pyglet import gl
 
 from .vendor import imgui
-from .vendor.imgui.integrations.pyglet import create_renderer
 
 from .components import (
     ImguiComponent,
@@ -13,6 +12,11 @@ from .components import (
 )
 from .config import AppConfig
 from .interanl import GlobalState
+
+# There is an issue of managing state of keys in `imgui._IO`, so that we used
+# a patched version of facilities which are originally provided in
+# `imgui.integrations.pyglet`. See also docstring of this module for details.
+from ._patches import create_renderer
 
 __all__ = ['Application']
 

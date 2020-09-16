@@ -468,9 +468,9 @@ class CodeNodeComponent(ImguiComponent):
             if len(self.name) > NODE_MAX_NAME_LEGNTH:
                 imgui.set_tooltip(self.name)
 
-            # Open CodeSnippetWindow when double-clicked or CTRL + click
+            # Open CodeSnippetWindow when double-clicked or ALT + click
             if imgui.is_mouse_double_clicked() or (
-                imgui.get_io().key_ctrl and imgui.is_mouse_clicked()
+                imgui.get_io().key_alt and imgui.is_mouse_clicked()
             ):
                 self.snippet_window.window_opened = True
                 imgui.set_next_window_focus()
