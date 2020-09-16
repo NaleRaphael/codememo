@@ -381,6 +381,7 @@ class CodeSnippetWindow(ImguiComponent):
 
 NODE_SLOT_RADIUS = 4.0
 NODE_WINDOW_PADDING = Vec2(8.0, 8.0)
+NODE_MAX_NAME_LEGNTH = 8    # number of characters
 
 class CodeNodeComponent(ImguiComponent):
     def __init__(self, _id, pos, node, **kwargs):
@@ -397,7 +398,7 @@ class CodeNodeComponent(ImguiComponent):
         """
         self.id = _id
         self.pos = pos
-        self.size = Vec2(320, 180)
+        self.size = Vec2(60, 13)    # just an initial value, should be set after rendered
         self.node = node
         self.root = node.root
         self.leaves = node.leaves
@@ -406,6 +407,14 @@ class CodeNodeComponent(ImguiComponent):
         self.container = None
         self.is_showing_context_menu = False
         self.confirmation_modal = False
+
+    @property
+    def display_name(self):
+        """Name of node to display on canvas."""
+        if len(self.name) > NODE_MAX_NAME_LEGNTH:
+            return f'{self.name[:NODE_MAX_NAME_LEGNTH - 3]}...'
+        else:
+            return self.name
 
     def get_leaf_slot_pos(self, slot_no):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
@@ -441,7 +450,7 @@ class CodeNodeComponent(ImguiComponent):
         old_any_active = imgui.is_any_item_active()
         imgui.set_cursor_screen_pos(node_rect_min + NODE_WINDOW_PADDING)
         imgui.begin_group()
-        imgui.text(f'{self.node.snippet.name}')
+        imgui.text(f'{self.display_name}')
         imgui.end_group()
 
         # Save the size
@@ -455,6 +464,10 @@ class CodeNodeComponent(ImguiComponent):
 
         # Display CodeSnippetWindow
         if imgui.is_item_hovered():
+            # Show full name in tooltip if length of name is too long
+            if len(self.name) > NODE_MAX_NAME_LEGNTH:
+                imgui.set_tooltip(self.name)
+
             # Open CodeSnippetWindow when double-clicked or CTRL + click
             if imgui.is_mouse_double_clicked() or (
                 imgui.get_io().key_ctrl and imgui.is_mouse_clicked()
