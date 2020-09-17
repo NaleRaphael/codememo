@@ -1,0 +1,23 @@
+[run]
+omit =
+    tests/*
+    codememo/vendor/pyimgui/*
+
+    # Wait for the release of the test framework for imgui
+    # see also: https://github.com/ocornut/imgui/issues/435
+    codememo/app.py
+    codememo/components.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    def __str__
+    if 0
+    if __name__ == '__main__'
+    raise NotImplementedError
+
+ignore_errors = True
+
+[html]
+directory = coverage_html_report
