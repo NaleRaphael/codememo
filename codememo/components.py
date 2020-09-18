@@ -439,10 +439,6 @@ class CodeNodeComponent(ImguiComponent):
             f'require a container {CodeNodeViewer} to render, got {self.container}'
         )
 
-        # TODO: rewrite this with a better approach
-        is_selecting_root_node = 'event__add_reference' in self.container.state_cache
-        can_be_added_as_reference = self.node.root is None and is_selecting_root_node
-
         node_rect_min = Vec2(*(offset + self.pos))
 
         # Display node contents first
@@ -477,6 +473,7 @@ class CodeNodeComponent(ImguiComponent):
         self.snippet_window.render()
 
         # Handle event of adding reference node
+        can_be_added_as_reference = self.container.check_node_can_be_added_as_reference(self)
         if self.container.state_cache and can_be_added_as_reference:
             if imgui.is_item_clicked():
                 event = self.container.state_cache['event__add_reference']
@@ -848,6 +845,14 @@ class CodeNodeViewer(ImguiComponent):
             self.id_hovered_in_scene == node.id or
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
+
+    def check_node_can_be_added_as_reference(self, node):
+        if node.id == self.id_selected:
+            # Selected node itself can be its own leaf reference
+            return False
+        # TODO: rewrite this with a better approach
+        is_selecting_leaf_node = 'event__add_reference' in self.state_cache
+        return node.root is None and is_selecting_leaf_node
 
     def create_node_component(self, node, node_pos=None):
         self.node_collection.nodes.append(node)
