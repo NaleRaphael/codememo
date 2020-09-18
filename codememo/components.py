@@ -745,6 +745,12 @@ class CodeNodeViewer(ImguiComponent):
         self.id_hovered_in_scene = -1
         self.panning = Vec2(0.0, 0.0)
 
+        # Screen position of node canvas, it can be use as a reference to
+        # calculate mousce position on canvas when we are going to create
+        # a node. And here it's just an initail value, it should be updated
+        # by `self.draw_node_canvas()`.
+        self._canvas_screen_pos = Vec2(0.0, 0.0)
+
         # --- Flags for view control
         # Show grid
         self.show_grid = False
@@ -775,20 +781,20 @@ class CodeNodeViewer(ImguiComponent):
     def add_leaf_reference(self, root, target, **kwargs):
         try:
             self.node_collection.add_leaf_reference(root, target, **kwargs)
-            self.init_nodes_and_links()
+            self.links = self.node_collection.resolve_links()
         except Exception as ex:
             GlobalState().push_error(ex)
 
     def remove_root_reference(self, node):
         try:
             self.node_collection.remove_root_reference(node)
-            self.init_nodes_and_links()
+            self.links = self.node_collection.resolve_links()
         except Exception as ex:
             GlobalState().push_error(ex)
 
     def init_nodes_and_links(self):
         trees, orphans = self.node_collection.resolve_tree()
-        self.links = self.node_collection.resolve_index_links_from_trees(trees)
+        self.links = self.node_collection.resolve_links_from_trees(trees)
 
         # TODO: add a flag to control whether we should re-calculate the layout
         # (would be useful when we are going to add a new node or link)
@@ -843,10 +849,27 @@ class CodeNodeViewer(ImguiComponent):
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
 
+    def create_node_component(self, node, node_pos=None):
+        self.node_collection.nodes.append(node)
+
+        init_kwargs = {
+            'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
+            'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
+        }
+
+        index = len(self.node_components)
+        component = CodeNodeComponent(index, node_pos, node, **init_kwargs)
+        component.set_container(self)
+        self.node_components.append(component)
+
     def remove_node_component(self, node_component):
         try:
             self.node_collection.remove_node(node_component.node)
-            self.init_nodes_and_links()
+            idx = self.node_components.index(node_component)
+            self.node_components.pop(idx)
+            self.links = self.node_collection.resolve_links()
+            if self.id_selected == idx:
+                self.id_selected = -1   # reset index of selected node
         except Exception as ex:
             GlobalState().push_error(ex)
 
@@ -885,6 +908,11 @@ class CodeNodeViewer(ImguiComponent):
         if clicked:
             self.close()
 
+    def handle_menu_item_rearrange_nodes(self):
+        clicked, selected = imgui.menu_item('Rearrange nodes')
+        if clicked:
+            self.init_nodes_and_links()
+
     def handle_menu_item_show_grid(self):
         _, self.show_grid = imgui.checkbox('Show grid', self.show_grid)
 
@@ -894,7 +922,7 @@ class CodeNodeViewer(ImguiComponent):
         )
         if clicked:
             if not self.enable_reference_highlight:
-                self.reset_highlighted_lines()
+                self.reset_highlighted_lines_in_snippet()
 
     def handle_state(self):
         if self.state_cache:
@@ -930,9 +958,9 @@ class CodeNodeViewer(ImguiComponent):
 
     def handle_selected_node(self, node_component):
         if self.enable_reference_highlight:
-            self.reset_highlighted_lines()
+            self.reset_highlighted_lines_in_snippet()
             self.id_selected = node_component.id
-            self.highlight_referenced_lines(node_component)
+            self.highlight_referenced_lines_in_snippet(node_component)
         else:
             self.id_selected = node_component.id
 
@@ -943,15 +971,16 @@ class CodeNodeViewer(ImguiComponent):
         # NOTE: To prevent confict, show this context menu only when no context menu
         # of node is showing.
         if not is_any_context_menu_showing:
-            mouse_pos = imgui.get_mouse_position()
             if imgui.begin_popup_context_item('context-menu', 2):
                 if imgui.selectable('Create node')[0]:
                     init_kwargs = {
                         'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
                         'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
                     }
+                    mouse_pos = Vec2(*imgui.get_mouse_position())
+                    node_pos_on_canvas = mouse_pos - self._canvas_screen_pos
                     node_creater = CodeNodeCreatorWindow(
-                        self.app, creation_pos=mouse_pos, **init_kwargs
+                        self.app, creation_pos=node_pos_on_canvas, **init_kwargs
                     )
                     node_creater.set_container(self)
                     self.app.add_component(node_creater)
@@ -977,11 +1006,10 @@ class CodeNodeViewer(ImguiComponent):
 
     def handle_event__create_node(self, event):
         node = event.get('node')
-        # TODO: create node at given position (`creation_pos`)
-        self.node_collection.nodes.append(node)
-        self.init_nodes_and_links()
+        node_pos = event.get('node_pos')
+        self.create_node_component(node, node_pos=node_pos)
 
-    def reset_highlighted_lines(self):
+    def reset_highlighted_lines_in_snippet(self):
         if self.id_selected == -1:
             return
         ids = [v.id for v in self.node_components]
@@ -993,7 +1021,7 @@ class CodeNodeViewer(ImguiComponent):
         idx = nodes.index(root_node)
         self.node_components[idx].snippet_window.reference_info = None
 
-    def highlight_referenced_lines(self, node_component):
+    def highlight_referenced_lines_in_snippet(self, node_component):
         root_node = node_component.node.root
         if root_node is None:
             return
@@ -1029,9 +1057,11 @@ class CodeNodeViewer(ImguiComponent):
         draw_list.channels_split(2)
         draw_list.channels_set_current(0)   # background
 
+        nodes = [v.node for v in self.node_components]
+
         for link in self.links:
-            node_leaf = self.node_components[link.leaf_idx]
-            node_root = self.node_components[link.root_idx]
+            node_leaf = self.node_components[nodes.index(link.leaf)]
+            node_root = self.node_components[nodes.index(link.root)]
             p1 = offset + node_leaf.get_root_slot_pos()
             p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
             draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
@@ -1073,7 +1103,8 @@ class CodeNodeViewer(ImguiComponent):
         imgui.begin_group()
         self.init_canvas()
 
-        offset = Vec2(*imgui.get_cursor_screen_pos()) + self.panning
+        self._canvas_screen_pos = Vec2(*imgui.get_cursor_screen_pos())
+        offset = self._canvas_screen_pos + self.panning
         draw_list = imgui.get_window_draw_list()
 
         if self.show_grid:
@@ -1105,6 +1136,7 @@ class CodeNodeViewer(ImguiComponent):
             self.handle_menu_item_close()
             imgui.end_menu()
         if imgui.begin_menu('View'):
+            self.handle_menu_item_rearrange_nodes()
             self.handle_menu_item_show_grid()
             self.handle_menu_item_enable_reference_highlight()
             imgui.end_menu()
