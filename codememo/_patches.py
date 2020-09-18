@@ -12,6 +12,11 @@ from .vendor.imgui.integrations.opengl import (
 
 
 class PygletMixin(_PygletMixin):
+    REVERSE_KEY_MAP = _PygletMixin.REVERSE_KEY_MAP
+    REVERSE_KEY_MAP.update({
+        98784247808: _PygletMixin.REVERSE_KEY_MAP[key.TAB]
+    })
+
     def _on_mods_press(self, symbol, mods):
         """
         Variable:
