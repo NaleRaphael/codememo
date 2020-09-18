@@ -109,24 +109,30 @@ class CodeSnippetWindow(ImguiComponent):
     DEFAULT_COMMENT_WINDOW_HEIGHT = 60
     DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
-    def __init__(self, node, max_width=640, max_height=360, **kwargs):
+    def __init__(
+        self, node, max_width=640, min_width=160, max_height=360,
+        min_height=90, **kwargs
+    ):
+        self._max_width = max_width
+        self._min_width = min_width
+        self._max_height = max_height
+        self._min_height = min_height
+
         self.node = node
-        snippet = node.snippet
-        self.snippet = snippet
-        self.window_name = f'snippet: {snippet.name}'
-        rows = snippet.content.splitlines()
+        self.snippet = node.snippet
+        self.window_name = f'snippet: {self.snippet.name}'
+        rows = self.snippet.content.splitlines()
         self.rows = [''] if len(rows) == 0 else rows
         self.comment = '' if node.comment is None else node.comment
 
         self.event_publisher = NodeEventPublisher()
 
-        n_digit = len('%i' % (len(self.rows) + snippet.line_start - 1))
-        snippet_height = (len(self.rows) + 2) * CODE_CHAR_HEIGHT
-        self._snippet_height = snippet_height
-        self.width_lineno = CODE_CHAR_WIDTH * n_digit
-        self.width_code = max([len(v) for v in self.rows]) * CODE_CHAR_WIDTH
-        self.width = min(self.width_lineno + self.width_code + 30, max_width)
-        self.height = min(snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT + 20, max_height)
+        self._snippet_height = CODE_CHAR_HEIGHT * 2
+        self.width_lineno = CODE_CHAR_WIDTH
+        self.width_code = max_width - 60
+        self.width = max_width
+        self.height = max_height
+        self.calculate_window_size()
 
         self.selected = [False] * len(self.rows)
         self.reference_info = None
@@ -153,6 +159,21 @@ class CodeSnippetWindow(ImguiComponent):
             convert_tab_to_spaces=self.convert_tab_to_spaces,
             tab_to_spaces_number=self.tab_to_spaces_number,
         )
+
+    def calculate_window_size(self):
+        n_digit = len('%i' % (len(self.rows) + self.snippet.line_start - 1))
+        snippet_height = (len(self.rows) + 2) * CODE_CHAR_HEIGHT
+        self._snippet_height = snippet_height
+        self.width_lineno = CODE_CHAR_WIDTH * n_digit
+
+        max_row = max([len(v) for v in self.rows])
+        self.width_code = max(max_row * CODE_CHAR_WIDTH + 30, self._min_width)
+
+        total_width = self.width_lineno + self.width_code + 30
+        self.width = min(max(total_width, self._min_width), self._max_width)
+
+        total_height = snippet_height + self.DEFAULT_COMMENT_WINDOW_HEIGHT + 20
+        self.height = min(max(total_height, self._min_height), self._max_height)
 
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
@@ -267,13 +288,7 @@ class CodeSnippetWindow(ImguiComponent):
 
     def display_table(self):
         imgui.columns(2)
-
-        imgui.text('no.')
         imgui.set_column_width(0, self.width_lineno)
-        imgui.next_column()
-        imgui.text('code')
-        imgui.next_column()
-        imgui.separator()
 
         for i, row in enumerate(self.rows):
             imgui.text(str(i+1))
@@ -297,10 +312,10 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.push_style_var(imgui.STYLE_ITEM_SPACING, imgui.Vec2(0, 0))
 
         # Table for code snippet
-        current_window_size = imgui.get_window_content_region_max()
         if self.collapsing_header_expanded:
             h_snippet = self.snippet_window_height
         else:
+            current_window_size = imgui.get_window_content_region_max()
             h_snippet = current_window_size.y - 60
         imgui.set_next_window_content_size(self.width_code, self._snippet_height)
         imgui.begin_child(
@@ -358,6 +373,7 @@ class CodeSnippetWindow(ImguiComponent):
             self.rows = self.node.snippet.content.splitlines()
             self.selected = [False] * len(self.rows)
             self.edited_content = ''
+            self.calculate_window_size()
         elif is_btn_cancel_clicked:
             self.is_edit_mode = False
             self.edited_content = ''
