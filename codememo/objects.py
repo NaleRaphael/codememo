@@ -348,6 +348,9 @@ class NodeCollection(object):
     def __init__(self, nodes):
         self.nodes = nodes
 
+    def __len__(self):
+        return len(self.nodes)
+
     def __getitem__(self, idx):
         return self.nodes[idx]
 
