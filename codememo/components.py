@@ -416,8 +416,6 @@ class CodeNodeComponent(ImguiComponent):
         self.pos = pos
         self.size = Vec2(60, 13)    # just an initial value, should be set after rendered
         self.node = node
-        self.root = node.root
-        self.leaves = node.leaves
         self.name = node.snippet.name
         self.snippet_window = CodeSnippetWindow(node, **kwargs)
         self.container = None
@@ -433,7 +431,7 @@ class CodeNodeComponent(ImguiComponent):
             return self.name
 
     def get_leaf_slot_pos(self, slot_no):
-        y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.leaves) + 1)
+        y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.node.leaves) + 1)
         return Vec2(self.pos.x + self.size.x, y)
 
     def get_root_slot_pos(self):
@@ -758,6 +756,10 @@ class CodeNodeViewer(ImguiComponent):
         self.id_hovered_in_scene = -1
         self.panning = Vec2(0.0, 0.0)
 
+        # NOTE: We should keep node id be auto incremental to prevent dupliate
+        # id being used by newly created node.
+        self._id_auto_increment = len(self.node_collection)
+
         # Screen position of node canvas, it can be use as a reference to
         # calculate mousce position on canvas when we are going to create
         # a node. And here it's just an initail value, it should be updated
@@ -866,13 +868,13 @@ class CodeNodeViewer(ImguiComponent):
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
 
-    def check_node_can_be_added_as_reference(self, node):
-        if node.id == self.id_selected:
+    def check_node_can_be_added_as_reference(self, node_component):
+        if node_component.id == self.id_selected:
             # Selected node itself can be its own leaf reference
             return False
         # TODO: rewrite this with a better approach
         is_selecting_leaf_node = 'event__add_reference' in self.state_cache
-        return node.root is None and is_selecting_leaf_node
+        return node_component.node.root is None and is_selecting_leaf_node
 
     def create_node_component(self, node, node_pos=None):
         self.node_collection.nodes.append(node)
@@ -882,7 +884,9 @@ class CodeNodeViewer(ImguiComponent):
             'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
         }
 
-        index = len(self.node_components)
+        index = self._id_auto_increment
+        self._id_auto_increment += 1
+
         component = CodeNodeComponent(index, node_pos, node, **init_kwargs)
         component.set_container(self)
         self.node_components.append(component)
@@ -891,9 +895,10 @@ class CodeNodeViewer(ImguiComponent):
         try:
             self.node_collection.remove_node(node_component.node)
             idx = self.node_components.index(node_component)
+            node_component_id = node_component.id
             self.node_components.pop(idx)
             self.links = self.node_collection.resolve_links()
-            if self.id_selected == idx:
+            if self.id_selected == node_component_id:
                 self.id_selected = -1   # reset index of selected node
         except Exception as ex:
             GlobalState().push_error(ex)
