@@ -793,10 +793,7 @@ class CodeNodeViewer(ImguiComponent):
         trees, orphans = self.node_collection.resolve_tree()
         self.links = self.node_collection.resolve_links_from_trees(trees)
 
-        # TODO: add a flag to control whether we should re-calculate the layout
-        # (would be useful when we are going to add a new node or link)
-        # Calculate node positions for layout, note that orphan nodes are prepended
-        # at the first column.
+        # Calculate position according to tree
         positions = []
         ux, uy = LAYOUT_NODE_OFFSET_X, LAYOUT_NODE_OFFSET_Y
         x_offset = ux if len(orphans) != 0 else 0
@@ -811,23 +808,30 @@ class CodeNodeViewer(ImguiComponent):
         for i, v in enumerate(orphans):
             positions.append(Vec2(0, i*uy))
 
-        # Instantiate `CodeNodeComponent`s with calculated positions
+        # Create ordered list of node according to tree
         nodes = []
         for tree in trees:
             nodes.extend([v for layer in tree for v in layer])
         nodes.extend(orphans)
-        init_kwargs = {
-            'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
-            'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
-        }
-        self.node_components = [
-            CodeNodeComponent(i, positions[i], v, **init_kwargs)
-            for i, v in enumerate(nodes)
-        ]
 
-        # Set container (viewer) for nodes
-        for node in self.node_components:
-            node.set_container(self)
+        if len(self.node_components) == 0:
+            # Instantiate `CodeNodeComponent`s with calculated positions
+            init_kwargs = {
+                'convert_tab_to_spaces': self.app.config.text_input.convert_tab_to_spaces,
+                'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
+            }
+            self.node_components = [
+                CodeNodeComponent(i, positions[i], v, **init_kwargs)
+                for i, v in enumerate(nodes)
+            ]
+            # Set container (viewer) for nodes
+            for node in self.node_components:
+                node.set_container(self)
+        else:
+            # Update position instead if `CodeNodeComponent`s are already created
+            for component in self.node_components:
+                idx = nodes.index(component.node)
+                component.pos = positions[idx]
 
     def reset_hovered_id_cache(self):
         self.id_hovered_in_list = -1
