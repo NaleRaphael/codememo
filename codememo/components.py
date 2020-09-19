@@ -533,28 +533,22 @@ class CodeNodeComponent(ImguiComponent):
 class CodeNodeCreatorWindow(ImguiComponent):
     """A window for creating node."""
     INPUT_SNIPPET_NAME_MAX_LENGTH = 128
+    INPUT_LANGUAGE_NAME_MAX_LENGTH = 32
     INPUT_SNIPPET_PATH_MAX_LENGTH = 256     # should depend on OS
     INPUT_SNIPPET_URL_MAX_LENGTH = 2048
     INPUT_SNIPPET_CONTENT_MAX_LENGTH = 65536
     INPUT_START_LINE_MAX_LENGTH = 16
-    SUPPORTED_LANGUAGES = {
-        '': 'raw',
-        '.c': 'c', '.h': 'c',
-        '.cpp': 'cpp', '.hpp': 'cpp',
-        '.py': 'python', '.pyx': 'python',
-    }
 
     def __init__(self, app, creation_pos=None, **kwargs):
         self.app = app
         self.creation_pos = creation_pos
         self.container = None
         self.event_publisher = NodeEventPublisher()
-        self.valid_languages = list(set(self.SUPPORTED_LANGUAGES.values()))
 
-        self.input_snippet_name = ''
+        self.input_snippet_name = 'untitled'
         self.input_snippet_path = ''
         self.input_snippet_url = ''
-        self.input_language_index = self.valid_languages.index('raw')
+        self.input_language = ''
         self.input_snippet = ''
         self.input_start_line = '1'
 
@@ -590,11 +584,18 @@ class CodeNodeCreatorWindow(ImguiComponent):
             error_msg = f'"Snippet name" cannot be empty'
             GlobalState().push_error(ValueError(error_msg))
             return
+        try:
+            start_line = int(self.input_start_line)
+            if start_line < 0:
+                raise ValueError('Got a negative integer')
+        except ValueError as ex:
+            error_msg = 'Value of "Start" should be a positive integer'
+            GlobalState().push_error(ValueError(error_msg))
+            return
 
-        lang = self.valid_languages[self.input_language_index]
         snippet = Snippet(
             self.input_snippet_name, self.input_snippet,
-            line_start=None, lang=lang,
+            line_start=start_line, lang=self.input_language,
             path=self.input_snippet_path,
             url=self.input_snippet_url,
         )
@@ -626,11 +627,13 @@ class CodeNodeCreatorWindow(ImguiComponent):
 
     def render(self):
         imgui.begin('code-node-creater-window')
-        imgui.set_window_size(300, 200)
+        imgui.set_window_size(300, 400)
 
         # Inputs
         imgui.begin_child('inputs', 0, -25)
         imgui.text('Snippet name:')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('[Required] Name of this code snippet')
         imgui.same_line()
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
@@ -641,19 +644,21 @@ class CodeNodeCreatorWindow(ImguiComponent):
         if changed:
             self.input_snippet_name = text
 
-        # TODO: Detect language automatically
-
         imgui.text('Language:')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('Language of this code snippet')
         imgui.same_line()
         imgui.push_item_width(-1)
-        clicked, current = imgui.combo(
-            '##language', self.input_language_index, self.valid_languages
+        changed, text = imgui.input_text(
+            '##language', self.input_snippet_path, self.INPUT_LANGUAGE_NAME_MAX_LENGTH
         )
         imgui.pop_item_width()
-        if clicked:
-            self.input_language_index = current
+        if changed:
+            self.input_language = text
 
         imgui.text('Path:')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('Path of file where this code snippet locates')
         imgui.same_line()
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
@@ -664,6 +669,8 @@ class CodeNodeCreatorWindow(ImguiComponent):
             self.input_snippet_path = text
 
         imgui.text('URL:')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('URL of file where this code snippet locates')
         imgui.same_line()
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
@@ -673,7 +680,9 @@ class CodeNodeCreatorWindow(ImguiComponent):
         if changed:
             self.input_snippet_url = text
 
-        imgui.text('Start line:')
+        imgui.text('Location of first line:')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('A line number of the first line where this code snippet refering')
         imgui.same_line()
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
@@ -686,7 +695,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
                 self.input_start_line = text
             else:
                 error_msg = (
-                    f'Value of "Start line" should be an integer and not exceed '
+                    f'Value of "Location of first line" should be an integer and not exceed '
                     f'{self.INPUT_START_LINE_MAX_LENGTH} digits.'
                 )
                 GlobalState().push_error(ValueError(error_msg))
