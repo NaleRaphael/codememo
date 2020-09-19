@@ -122,7 +122,6 @@ class CodeSnippetWindow(ImguiComponent):
         self.snippet = node.snippet
         rows = self.snippet.content.splitlines()
         self.rows = [''] if len(rows) == 0 else rows
-        self.comment = '' if node.comment is None else node.comment
 
         self.event_publisher = NodeEventPublisher()
 
@@ -317,11 +316,11 @@ class CodeSnippetWindow(ImguiComponent):
     def display_comment_window(self):
         imgui.push_item_width(-1)
         changed, text = imgui.input_text_multiline(
-            '##comment', self.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5,
+            '##comment', self.node.comment, self.DEFAULT_COMMENT_BUFFER_SIZE, height=-5,
             flags=self.input_text_callback_flags, callback_config=self.input_text_callback_config
         )
         if changed:
-            self.comment = text
+            self.node.comment = text
         imgui.pop_item_width()
 
     def _render_view_mode(self):
@@ -696,13 +695,13 @@ class CodeNodeComponent(ImguiComponent):
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
                     'Are you sure you want to remove root reference of this node?',
-                    lambda: self.container.remove_root_reference(self.node),
+                    callback_yes=lambda: self.container.remove_root_reference(self.node),
                 )
             if imgui.selectable('Remove node')[0]:
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
                     f'Are you sure you want to remove this node \n"{self.name}"?',
-                    lambda: self.container.remove_node_component(self),
+                    callback_yes=lambda: self.container.remove_node_component(self),
                 )
             imgui.end_popup()
 
@@ -957,6 +956,7 @@ class CodeNodeViewer(ImguiComponent):
         self.enable_reference_highlight = True
 
         self.file_dialog = None
+        self.confirmation_modal = None
 
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
@@ -1359,10 +1359,45 @@ class CodeNodeViewer(ImguiComponent):
     def close(self):
         """Let host application know that this component is going to be closed,
         and clear references to this object in order to release memory."""
-        self.app.remove_component(self)
-        self.node_components = []
-        self.links = []
-        self.app = None
+        def _close():
+            self.app.remove_component(self)
+            self.node_components = []
+            self.links = []
+            self.app = None
+
+        # Check whether there are unsaved changes
+        if self.fn_src is None:
+            if len(self.node_collection) == 0:    # nothing to save
+                _close()
+                return
+
+            def _save_to_file_and_close():
+                self.file_dialog = SaveFileDialog(
+                    self.app,
+                    lambda fn: (self.save_data(fn) or _close())
+                )
+
+            self.confirmation_modal = ConfirmationModal(
+                'Confirm',
+                'There are unsaved changes, do you want to save them?',
+                callback_yes=_save_to_file_and_close,
+                callback_no=_close,
+                show_cancel_button=True,
+            )
+        else:
+            current_data = self.node_collection.to_dict()
+            saved_data = NodeCollection.load(self.fn_src).to_dict()
+
+            if current_data != saved_data:
+                self.confirmation_modal = ConfirmationModal(
+                    'Confirm',
+                    'There are unsaved changes, do you want to save them?',
+                    callback_yes=lambda: (self.save_data(self.fn_src) or _close()),
+                    callback_no=_close,
+                    show_cancel_button=True,
+                )
+            else:
+                _close()
 
     def render(self):
         _, self.opened = imgui.begin(
@@ -1383,6 +1418,12 @@ class CodeNodeViewer(ImguiComponent):
         self.draw_node_canvas()
         imgui.end_group()
         self.handle_context_menu_canvas()
+
+        if self.confirmation_modal:
+            self.confirmation_modal.render()
+            if self.confirmation_modal.terminated:
+                self.confirmation_modal = None
+
         imgui.end()
 
 
@@ -1441,10 +1482,13 @@ class ErrorMessageModal(ImguiComponent):
 
 
 class ConfirmationModal(ImguiComponent):
-    def __init__(self, title, message, callback):
+    def __init__(self, title, message, callback_yes=None, callback_no=None,
+        show_cancel_button=False):
         self.title = title
         self.message = message
-        self.callback = callback
+        self.callback_yes = callback_yes
+        self.callback_no = callback_no
+        self.show_cancel_button = show_cancel_button
         self.modal_opened = False
         self.terminated = False
 
@@ -1458,14 +1502,22 @@ class ConfirmationModal(ImguiComponent):
 
             # HACK: Use an empty label as the anchor to set cursor to center
             # of current line.
+            offset = 60 if self.show_cancel_button else 30
             imgui.text('')
-            imgui.same_line(imgui.get_window_width()/2 - 30)
+            imgui.same_line(imgui.get_window_width()/2 - offset)
             if imgui.button('Yes'):
-                self.callback()
+                if self.callback_yes is not None:
+                    self.callback_yes()
                 self.terminated = True
             imgui.same_line()
             if imgui.button('No'):
+                if self.callback_no is not None:
+                    self.callback_no()
                 self.terminated = True
+            if self.show_cancel_button:
+                imgui.same_line()
+                if imgui.button('Cancel'):
+                    self.terminated = True
             imgui.end_popup()
 
 
@@ -1545,7 +1597,7 @@ class OpenFileDialog(ImguiComponent):
 class SaveFileDialog(ImguiComponent):
     INPUT_FILENAME_MAX_LENGTH = 256
 
-    def __init__(self, app, callback):
+    def __init__(self, app, callback, always_on_top=True):
         """
         app : codememo.Application
             Reference of running application.
@@ -1557,6 +1609,7 @@ class SaveFileDialog(ImguiComponent):
         self.app = app
         self.filename = str(Path('').absolute())
         self.callback = callback
+        self.always_on_top = always_on_top
         self.error_msg = ''
         self.confirmation_modal = None
         self.window_opened = False
@@ -1569,6 +1622,8 @@ class SaveFileDialog(ImguiComponent):
         self.app.remove_component(self)
 
     def render(self):
+        if self.always_on_top:
+            imgui.set_next_window_focus()
         _, self.window_opened = imgui.begin(
             'Save file', closable=True,
             flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_SAVED_SETTINGS
@@ -1615,7 +1670,8 @@ class SaveFileDialog(ImguiComponent):
                     f'\n{self.filename}'
                 )
                 self.confirmation_modal = ConfirmationModal(
-                    'Error', msg, lambda: self.callback() or self.close(),
+                    'Error', msg,
+                    callback_yes=lambda: self.callback() or self.close(),
                 )
             else:
                 # Should not be here...
