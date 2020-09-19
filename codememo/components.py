@@ -120,7 +120,6 @@ class CodeSnippetWindow(ImguiComponent):
 
         self.node = node
         self.snippet = node.snippet
-        self.window_name = f'snippet: {self.snippet.name}'
         rows = self.snippet.content.splitlines()
         self.rows = [''] if len(rows) == 0 else rows
         self.comment = '' if node.comment is None else node.comment
@@ -159,6 +158,15 @@ class CodeSnippetWindow(ImguiComponent):
             convert_tab_to_spaces=self.convert_tab_to_spaces,
             tab_to_spaces_number=self.tab_to_spaces_number,
         )
+
+        # Property window
+        self.property_window = None
+
+    @property
+    def window_name(self):
+        # NOTE: use `node.uuid` as an identifier to prevent content of nodes with
+        # the same name as this node being displayed in the same window.
+        return f'snippet: {self.snippet.name} ##{self.node.uuid}'
 
     def calculate_window_size(self):
         n_digit = len('%i' % (len(self.rows) + self.snippet.line_start - 1))
@@ -261,17 +269,27 @@ class CodeSnippetWindow(ImguiComponent):
                 return
 
             if states['opened']:
+                # Show property window
+                if imgui.selectable('Properties')[0]:
+                    if self.property_window is None:
+                        self.property_window = CodeSnippetPropertyWindow(
+                            self.snippet,
+                            initial_position=Vec2(*imgui.get_mouse_pos())
+                        )
+                        self.property_window.window_opened = True
+
                 # Prepare to enter edit mode
                 if imgui.selectable('Edit')[0]:
                     self.is_edit_mode = True
                     self.edited_content = self.node.snippet.content
 
                 # Clear highlighted lines
-                if imgui.selectable('Clear highlight')[0] and self.reference_info:
+                if self.reference_info is not None and imgui.selectable('Clear highlight')[0]:
                     self.reference_info = None
 
                 # Add the following menu items only when lines are selected
                 if is_any_row_selected:
+                    imgui.separator()
                     if imgui.selectable('Add leaf reference')[0]:
                         ref_start, ref_stop = self.get_selected_lines()
                         event_args = dict(
@@ -392,6 +410,167 @@ class CodeSnippetWindow(ImguiComponent):
         else:
             self._render_view_mode()
 
+        if self.property_window is not None:
+            if self.property_window.window_opened:
+                self.property_window.render()
+            else:
+                # Remove reference since it has been closed already
+                self.property_window = None
+
+        imgui.end()
+
+
+class CodeSnippetPropertyWindow(ImguiComponent):
+    """A window to show and edit properties of a code snipppet."""
+    INPUT_SNIPPET_NAME_MAX_LENGTH = 128
+    INPUT_LANGUAGE_NAME_MAX_LENGTH = 32
+    INPUT_SNIPPET_PATH_MAX_LENGTH = 256     # should depend on OS
+    INPUT_SNIPPET_URL_MAX_LENGTH = 2048
+    INPUT_START_LINE_MAX_LENGTH = 16
+
+    def __init__(self, snippet, initial_position=None):
+        """
+        Parameters
+        ----------
+        snippet : codememo.objects.Snippet
+        initial_position : Vec2
+        """
+        if not isinstance(initial_position, Vec2):
+            raise ValueError(f'should be an instance of {Vec2}')
+
+        self.snippet = snippet
+        self.window_opened = False
+        self.initial_position = initial_position
+
+        # Editable fields
+        self.input_snippet_name = self.snippet.name
+        self.input_snippet_lang = self.snippet.lang
+        self.input_snippet_path = self.snippet.path
+        self.input_snippet_url = self.snippet.url
+        self.input_start_line = str(self.snippet.line_start)
+
+    @property
+    def window_name(self):
+        return f'Property: {self.snippet.name}'
+
+    def close(self):
+        self.window_opened = False
+        self.snippet = None
+
+    def save(self):
+        if self.input_snippet_name == '':
+            error_msg = f'"Snippet name" cannot be empty'
+            GlobalState().push_error(ValueError(error_msg))
+            return
+        try:
+            start_line = int(self.input_start_line)
+            if start_line <= 0:
+                raise ValueError('should be a positive number')
+        except ValueError as ex:
+            error_msg = 'Value of "Location of first line" should be a positive integer'
+            GlobalState().push_error(ValueError(error_msg))
+            return
+
+        self.snippet.name = self.input_snippet_name
+        self.snippet.lang = self.input_snippet_lang
+        self.snippet.path = self.input_snippet_path
+        self.snippet.url = self.input_snippet_url
+        self.snippet.line_start = start_line
+        self.close()
+
+    def _render_property_fields(self):
+        imgui.begin_child('inputs', 0, -25)
+        imgui.text('Snippet name:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##snippet-name', self.input_snippet_name, self.INPUT_SNIPPET_NAME_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_snippet_name = text
+
+        imgui.text('Language:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##language', self.input_snippet_lang, self.INPUT_LANGUAGE_NAME_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_snippet_lang = text
+
+        imgui.text('Path:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##path', self.input_snippet_path, self.INPUT_SNIPPET_PATH_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_snippet_path = text
+
+        imgui.text('URL:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##url', self.input_snippet_url, self.INPUT_SNIPPET_URL_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_snippet_url = text
+
+        imgui.text('Location of first line:')
+        imgui.same_line()
+        imgui.push_item_width(-1)
+        changed, text = imgui.input_text(
+            '##start-line', self.input_start_line, self.INPUT_START_LINE_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
+        )
+        imgui.pop_item_width()
+        if changed:
+            self.input_start_line = text
+
+        imgui.end_child()
+
+        # Buttons
+        imgui.begin_group()
+        pos = Vec2(*imgui.get_cursor_position())
+        width = imgui.get_window_content_region_width()
+        imgui.set_cursor_pos(Vec2(pos.x + width - 95, pos.y))
+        is_btn_save_clicked = imgui.button('Save')
+        imgui.same_line()
+        is_btn_cancel_clicked = imgui.button('Cancel')
+        imgui.end_group()
+
+        if is_btn_save_clicked:
+            self.save()
+        if is_btn_cancel_clicked:
+            self.close()
+
+    def render(self):
+        # Only set position of this window when it is going to be opened
+        if self.initial_position is not None:
+            imgui.set_next_window_position(*self.initial_position)
+            imgui.set_next_window_size(350, 175)
+            self.initial_position = None
+
+        _, self.window_opened = imgui.begin(
+            self.window_name, closable=True,
+            flags=(
+                imgui.WINDOW_NO_SCROLLBAR |
+                imgui.WINDOW_NO_RESIZE |
+                imgui.WINDOW_NO_SAVED_SETTINGS
+            )
+        )
+        if not self.window_opened:
+            self.close()
+            imgui.end()
+            return
+
+        self._render_property_fields()
         imgui.end()
 
 
@@ -416,11 +595,14 @@ class CodeNodeComponent(ImguiComponent):
         self.pos = pos
         self.size = Vec2(60, 13)    # just an initial value, should be set after rendered
         self.node = node
-        self.name = node.snippet.name
         self.snippet_window = CodeSnippetWindow(node, **kwargs)
         self.container = None
         self.is_showing_context_menu = False
         self.confirmation_modal = False
+
+    @property
+    def name(self):
+        return self.node.snippet.name
 
     @property
     def display_name(self):
@@ -548,7 +730,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         self.input_snippet_name = 'untitled'
         self.input_snippet_path = ''
         self.input_snippet_url = ''
-        self.input_language = ''
+        self.input_snippet_lang = ''
         self.input_snippet = ''
         self.input_start_line = '1'
 
@@ -586,16 +768,16 @@ class CodeNodeCreatorWindow(ImguiComponent):
             return
         try:
             start_line = int(self.input_start_line)
-            if start_line < 0:
-                raise ValueError('Got a negative integer')
+            if start_line <= 0:
+                raise ValueError('should be a positive number')
         except ValueError as ex:
-            error_msg = 'Value of "Start" should be a positive integer'
+            error_msg = 'Value of "Location of first line" should be a positive integer'
             GlobalState().push_error(ValueError(error_msg))
             return
 
         snippet = Snippet(
             self.input_snippet_name, self.input_snippet,
-            line_start=start_line, lang=self.input_language,
+            line_start=start_line, lang=self.input_snippet_lang,
             path=self.input_snippet_path,
             url=self.input_snippet_url,
         )
@@ -650,11 +832,12 @@ class CodeNodeCreatorWindow(ImguiComponent):
         imgui.same_line()
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
-            '##language', self.input_snippet_path, self.INPUT_LANGUAGE_NAME_MAX_LENGTH
+            '##language', self.input_snippet_lang, self.INPUT_LANGUAGE_NAME_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_CHARS_NO_BLANK
         )
         imgui.pop_item_width()
         if changed:
-            self.input_language = text
+            self.input_snippet_lang = text
 
         imgui.text('Path:')
         if imgui.is_item_hovered():
@@ -691,15 +874,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         )
         imgui.pop_item_width()
         if changed:
-            if self._check_input_number(text):
-                self.input_start_line = text
-            else:
-                error_msg = (
-                    f'Value of "Location of first line" should be an integer and not exceed '
-                    f'{self.INPUT_START_LINE_MAX_LENGTH} digits.'
-                )
-                GlobalState().push_error(ValueError(error_msg))
-                return
+            self.input_start_line = text
 
         imgui.text('Snippet:')
         imgui.push_item_width(-1)
