@@ -67,8 +67,8 @@ class Snippet(object):
         self.name = name
         self.content = content
         self.lang = 'raw' if lang is None else lang
-        self.path = path
-        self.url = url
+        self.path = '' if path is None else path
+        self.url = '' if url is None else url
         self.line_start = 1 if line_start is None else line_start
 
     @property
@@ -140,7 +140,7 @@ class Node(object):
 
         self._ref_info = None
         self.snippet = snippet
-        self.comment = comment
+        self.comment = '' if comment is None else comment
         self.uuid = uuid4() if uuid is None else uuid
         if not isinstance(self.uuid, UUID) and isinstance(self.uuid, str):
             if isinstance(self.uuid, str):

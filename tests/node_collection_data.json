@@ -7,10 +7,10 @@
         "content": "def foo():\n    bar()\n    buzz()\n",
         "line_start": 1,
         "lang": "raw",
-        "path": null,
-        "url": null
+        "path": "",
+        "url": ""
       },
-      "comment": null,
+      "comment": "",
       "root": null,
       "leaves": [
         "6921e152-78f7-40ac-9207-8fc73a1c9b26",
@@ -25,10 +25,10 @@
         "content": "def bar():\n    print(\"bar\")",
         "line_start": 57,
         "lang": "py",
-        "path": null,
-        "url": null
+        "path": "",
+        "url": ""
       },
-      "comment": null,
+      "comment": "",
       "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
       "leaves": [],
       "ref_info": {
@@ -43,10 +43,10 @@
         "content": "def buzz():\n    print(\"buzz\")",
         "line_start": 1,
         "lang": "cpp",
-        "path": null,
-        "url": null
+        "path": "",
+        "url": ""
       },
-      "comment": null,
+      "comment": "",
       "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
       "leaves": [],
       "ref_info": {
