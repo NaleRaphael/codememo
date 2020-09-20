@@ -662,8 +662,11 @@ class CodeNodeComponent(ImguiComponent):
         self.snippet_window.render()
 
         # Handle event of adding reference node
-        can_be_added_as_reference = self.container.check_node_can_be_added_as_reference(self)
-        if self.container.state_cache and can_be_added_as_reference:
+        can_be_added_as_reference = False
+        if self.container.state_cache:
+            # NOTE: update this boolean only when we are selecting nodes for
+            # reference, this can reduce resource waste.
+            can_be_added_as_reference = self.container.check_node_can_be_added_as_reference(self)
             if imgui.is_item_clicked():
                 event = self.container.state_cache['event__add_reference']
                 root = event.get('root_node')
@@ -1053,11 +1056,24 @@ class CodeNodeViewer(ImguiComponent):
 
     def check_node_can_be_added_as_reference(self, node_component):
         if node_component.id == self.id_selected:
-            # Selected node itself can be its own leaf reference
+            # Selected node itself can't be its own leaf reference
             return False
         # TODO: rewrite this with a better approach
         is_selecting_leaf_node = 'event__add_reference' in self.state_cache
-        return node_component.node.root is None and is_selecting_leaf_node
+        if not is_selecting_leaf_node:
+            return False
+
+        target = node_component.node
+        if target.root is not None:
+            return False
+
+        root_node = self.state_cache['event__add_reference'].get('root_node')
+        temp_root = root_node.root
+        while temp_root is not None:
+            if target is temp_root:
+                return False
+            temp_root = temp_root.root
+        return True
 
     def create_node_component(self, node, node_pos=None):
         self.node_collection.nodes.append(node)
