@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from .vendor import imgui
@@ -110,13 +111,15 @@ class CodeSnippetWindow(ImguiComponent):
     DEFAULT_COMMENT_BUFFER_SIZE = 4096
 
     def __init__(
-        self, node, max_width=640, min_width=160, max_height=360,
+        self, node, container_id, max_width=640, min_width=160, max_height=360,
         min_height=90, **kwargs
     ):
         self._max_width = max_width
         self._min_width = min_width
         self._max_height = max_height
         self._min_height = min_height
+
+        self.container_id = container_id
 
         self.node = node
         self.snippet = node.snippet
@@ -263,7 +266,7 @@ class CodeSnippetWindow(ImguiComponent):
 
         def context_menu(is_any_row_selected):
             if not states['opened']:
-                states['opened'] = imgui.begin_popup_context_item('Context menu', mouse_button=2)
+                states['opened'] = imgui.begin_popup_context_item('context-menu', mouse_button=2)
             else:
                 return
 
@@ -272,7 +275,7 @@ class CodeSnippetWindow(ImguiComponent):
                 if imgui.selectable('Properties')[0]:
                     if self.property_window is None:
                         self.property_window = CodeSnippetPropertyWindow(
-                            self.snippet,
+                            self.snippet, self.node.uuid,
                             initial_position=Vec2(*imgui.get_mouse_pos())
                         )
                         self.property_window.window_opened = True
@@ -296,7 +299,7 @@ class CodeSnippetWindow(ImguiComponent):
                             ref_start=ref_start,
                             ref_stop=ref_stop,
                         )
-                        event = NodeEvent('add_reference', event_args)
+                        event = NodeEvent(f'add_reference_##{self.container_id}', event_args)
                         self.event_registry.dispatch(event)
                     if imgui.selectable('Cancel selection')[0]:
                         self.reset_selected()
@@ -336,7 +339,7 @@ class CodeSnippetWindow(ImguiComponent):
             h_snippet = current_window_size.y - 60
         imgui.set_next_window_content_size(self.width_code, self._snippet_height)
         imgui.begin_child(
-            'code snippet', -5, h_snippet, border=True,
+            'code-snippet', -5, h_snippet, border=True,
             flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR
         )
         self.display_table()
@@ -427,7 +430,7 @@ class CodeSnippetPropertyWindow(ImguiComponent):
     INPUT_SNIPPET_URL_MAX_LENGTH = 2048
     INPUT_START_LINE_MAX_LENGTH = 16
 
-    def __init__(self, snippet, initial_position=None):
+    def __init__(self, snippet, node_uuid, initial_position=None):
         """
         Parameters
         ----------
@@ -438,6 +441,7 @@ class CodeSnippetPropertyWindow(ImguiComponent):
             raise ValueError(f'should be an instance of {Vec2}')
 
         self.snippet = snippet
+        self.node_uuid = node_uuid
         self.window_opened = False
         self.initial_position = initial_position
 
@@ -450,7 +454,7 @@ class CodeSnippetPropertyWindow(ImguiComponent):
 
     @property
     def window_name(self):
-        return f'Property: {self.snippet.name}'
+        return f'Property: {self.snippet.name}##{self.node_uuid}'
 
     def close(self):
         self.window_opened = False
@@ -594,7 +598,13 @@ class CodeNodeComponent(ImguiComponent):
         self.pos = pos
         self.size = Vec2(60, 13)    # just an initial value, should be set after rendered
         self.node = node
-        self.snippet_window = CodeSnippetWindow(node, **kwargs)
+
+        self.snippet_window = None
+        self._snippet_window_init_kwargs = {
+            'convert_tab_to_spaces': kwargs.pop('convert_tab_to_spaces', False),
+            'tab_to_spaces_number': kwargs.pop('tab_to_spaces_number', 4),
+        }
+
         self.container = None
         self.is_showing_context_menu = False
         self.confirmation_modal = False
@@ -622,6 +632,13 @@ class CodeNodeComponent(ImguiComponent):
         if not isinstance(container, CodeNodeViewer):
             raise TypeError(f'require a container {CodeNodeViewer} to render')
         self.container = container
+
+    def open_snippet_window(self):
+        self.snippet_window = CodeSnippetWindow(
+            self.node, self.container.window_id, **self._snippet_window_init_kwargs
+        )
+        self.snippet_window.window_opened = True
+        imgui.set_next_window_focus()
 
     def render(self, draw_list, offset):
         assert isinstance(self.container, CodeNodeViewer), (
@@ -657,9 +674,14 @@ class CodeNodeComponent(ImguiComponent):
             if imgui.is_mouse_double_clicked() or (
                 imgui.get_io().key_alt and imgui.is_mouse_clicked()
             ):
-                self.snippet_window.window_opened = True
-                imgui.set_next_window_focus()
-        self.snippet_window.render()
+                self.open_snippet_window()
+
+        if self.snippet_window is not None:
+            if self.snippet_window.window_opened:
+                self.snippet_window.render()
+            else:
+                # Window has been closed, so we remove this reference.
+                self.snippet_window = None
 
         # Handle event of adding reference node
         can_be_added_as_reference = False
@@ -723,6 +745,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         self.app = app
         self.creation_pos = creation_pos
         self.container = None
+        self.window_id = int(time.time())
         self.event_registry = NodeEventRegistry.get_instance()
 
         self.input_snippet_name = 'untitled'
@@ -748,6 +771,10 @@ class CodeNodeCreatorWindow(ImguiComponent):
             convert_tab_to_spaces=self.convert_tab_to_spaces,
             tab_to_spaces_number=self.tab_to_spaces_number,
         )
+
+    @property
+    def window_name(self):
+        return f'Node Creator Window##{self.window_id}'
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -780,7 +807,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         )
         node = Node(snippet)
         event_args = dict(node=node, node_pos=self.creation_pos)
-        event = NodeEvent('create_node', event_args)
+        event = NodeEvent(f'create_node_##{self.container.window_id}', event_args)
         self.event_registry.dispatch(event)
         self.close()
 
@@ -805,7 +832,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         return True
 
     def render(self):
-        imgui.begin('code-node-creater-window')
+        imgui.begin(self.window_name)
         imgui.set_window_size(300, 400)
 
         # Inputs
@@ -923,11 +950,12 @@ class CodeNodeViewer(ImguiComponent):
         self.app = app
         self.fn_src = fn_src
 
-        # NOTE: We should avoid duplicate of window name (identifier) because
-        # it relates to the focus mechanism. See also the implementation of
-        # `CodeNodeViewer.handle_event__add_reference()`
+        # NOTE: Here we use timestamp as an identifier to prevent data being
+        # rendering in the same window if there are multiple viewer windows
+        # haven't saved changes.
+        self.window_id = int(time.time())
         fn = 'untitled' if fn_src is None else Path(fn_src).with_suffix('').name
-        self.window_name = f'CodeNode Viewer: {fn}'
+        self.window_name = f'CodeNode Viewer: {fn} ##{self.window_id}'
 
         self.node_collection = node_collection
         self.node_components = []
@@ -961,9 +989,20 @@ class CodeNodeViewer(ImguiComponent):
         self.opened = False
         self.state_cache = {}
 
+        # NOTE: We have to register event with window ID. Otherwise, handler in
+        # multiple instances of `CodeNodeViewer` will be triggered with the same
+        # event. (e.g. We want to create a node in this viewer, but the node will
+        # also be created in all other windows since they all registered the event
+        # with the same event name.)
         self.event_registry = NodeEventRegistry.get_instance()
-        self.event_registry.register('add_reference', self.handle_event__add_reference)
-        self.event_registry.register('create_node', self.handle_event__create_node)
+        self.event_registry.register(
+            f'add_reference_##{self.window_id}',
+            self.handle_event__add_reference
+        )
+        self.event_registry.register(
+            f'create_node_##{self.window_id}',
+            self.handle_event__create_node
+        )
 
         self.init_nodes_and_links()
 
@@ -977,7 +1016,7 @@ class CodeNodeViewer(ImguiComponent):
 
         # Update window name
         self.fn_src = fn
-        self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name}"
+        self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name} ##{self.window_id}"
 
     def add_leaf_reference(self, root, target, **kwargs):
         try:
@@ -1304,7 +1343,7 @@ class CodeNodeViewer(ImguiComponent):
             imgui.pop_id()
 
     def draw_node_list(self):
-        imgui.begin_child('node_list', 100, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        imgui.begin_child('node-list', 100, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
         imgui.text('nodes')
         imgui.separator()
 
@@ -1376,8 +1415,14 @@ class CodeNodeViewer(ImguiComponent):
         def _close():
             # Unregister events before being closed. Otherwise, this component
             # won't be removed successfully.
-            self.event_registry.unregister('add_reference', self.handle_event__add_reference)
-            self.event_registry.unregister('create_node', self.handle_event__create_node)
+            self.event_registry.unregister(
+                f'add_reference_##{self.window_id}',
+                self.handle_event__add_reference
+            )
+            self.event_registry.unregister(
+                f'create_node_##{self.window_id}',
+                self.handle_event__create_node
+            )
             self.event_registry = None
 
             self.app.remove_component(self)
