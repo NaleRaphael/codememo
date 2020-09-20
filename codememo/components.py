@@ -1302,7 +1302,8 @@ class CodeNodeViewer(ImguiComponent):
             return
         nodes = [v.node for v in self.node_components]
         idx = nodes.index(root_node)
-        self.node_components[idx].snippet_window.reference_info = None
+        if self.node_components[idx].snippet_window is not None:
+            self.node_components[idx].snippet_window.reference_info = None
 
     def highlight_referenced_lines_in_snippet(self, node_component):
         root_node = node_component.node.root
@@ -1310,7 +1311,8 @@ class CodeNodeViewer(ImguiComponent):
             return
         nodes = [v.node for v in self.node_components]
         idx = nodes.index(root_node)
-        self.node_components[idx].snippet_window.reference_info = node_component.node.ref_info
+        if self.node_components[idx].snippet_window is not None:
+            self.node_components[idx].snippet_window.reference_info = node_component.node.ref_info
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
