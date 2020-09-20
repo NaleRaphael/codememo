@@ -1,43 +1,53 @@
-__all__ = ['NodeEvent', 'NodeEventPublisher']
+from .interanl import Singleton
+
+__all__ = ['NodeEvent', 'NodeEventRegistry']
 
 
 class NodeEvent(object):
-    def __init__(self, name, **kwargs):
+    def __init__(self, name, event_args):
         self.name = name
-        self.kwargs = kwargs
+        self.event_args = event_args
 
     def __repr__(self):
         return f'<NodeEvent "{self.name}">'
 
     def get(self, name, default=None):
-        return self.kwargs.get(name, default)
+        return self.event_args.get(name, default)
 
 
-class NodeEventPublisher(object):
+class NodeEventRegistry(metaclass=Singleton):
     def __init__(self):
-        self.subscribers = []
+        self.registry = {}
 
-    def register(self, subscriber):
-        self.subscribers.append(subscriber)
+    @classmethod
+    def get_instance(cls):
+        return cls()
 
-    def unregister(self, subscriber):
+    def clear(self):
+        self.registry = {}
+
+    def register(self, event_name, subscriber):
+        if not callable(subscriber):
+            raise TypeError('Subscriber should be a callable.')
+        if event_name not in self.registry:
+            self.registry.update({event_name: []})
+        self.registry[event_name].append(subscriber)
+
+    def unregister(self, event_name, subscriber):
+        if event_name not in self.registry:
+            raise ValueError(f'Event {event_name} has not been registered')
         try:
-            idx = self.subscribers.index(subscriber)
+            idx = self.registry[event_name].index(subscriber)
         except ValueError as ex:
             msg = f'Subscriber {subscriber} does not exist in list'
             raise ValueError(msg) from ex
-        self.subscribers.pop()
+        self.registry[event_name].pop(idx)
 
     def dispatch(self, event):
         if not isinstance(event, NodeEvent):
             raise TypeError(f'should be an instance of {NodeEvent}')
+        if event.name not in self.registry:
+            raise ValueError(f'Event {event.name} has not been subscribed by anyone')
 
-        for subscriber in self.subscribers:
-            callback_name = f'handle_event__{event.name}'
-            callback = getattr(subscriber, callback_name)
-            if callback is None:
-                raise ValueError(
-                    (f'Method {callback_name} does not implemented '
-                    f'in subscriber {subscriber}')
-                )
-            callback(event)
+        for subscriber in self.registry[event.name]:
+            subscriber(event)

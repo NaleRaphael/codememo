@@ -9,7 +9,7 @@ from .objects import (
     NodeLink,
     NodeCollection,
 )
-from .events import NodeEvent, NodeEventPublisher
+from .events import NodeEvent, NodeEventRegistry
 from .interanl import GlobalState
 
 CODE_CHAR_WIDTH = 8
@@ -123,7 +123,7 @@ class CodeSnippetWindow(ImguiComponent):
         rows = self.snippet.content.splitlines()
         self.rows = [''] if len(rows) == 0 else rows
 
-        self.event_publisher = NodeEventPublisher()
+        self.event_registry = NodeEventRegistry.get_instance()
 
         self._snippet_height = CODE_CHAR_HEIGHT * 2
         self.width_lineno = CODE_CHAR_WIDTH
@@ -296,8 +296,8 @@ class CodeSnippetWindow(ImguiComponent):
                             ref_start=ref_start,
                             ref_stop=ref_stop,
                         )
-                        event = NodeEvent('add_reference', **event_args)
-                        self.event_publisher.dispatch(event)
+                        event = NodeEvent('add_reference', event_args)
+                        self.event_registry.dispatch(event)
                     if imgui.selectable('Cancel selection')[0]:
                         self.reset_selected()
                 imgui.end_popup()
@@ -622,12 +622,6 @@ class CodeNodeComponent(ImguiComponent):
         if not isinstance(container, CodeNodeViewer):
             raise TypeError(f'require a container {CodeNodeViewer} to render')
         self.container = container
-        self.snippet_window.event_publisher.register(self.container)
-
-    def handle_event__add_reference(self, event):
-        root = event.get('root_node')
-        kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
-        self.container.add_leaf_reference(root, self.node, **kwargs)
 
     def render(self, draw_list, offset):
         assert isinstance(self.container, CodeNodeViewer), (
@@ -672,7 +666,9 @@ class CodeNodeComponent(ImguiComponent):
         if self.container.state_cache and can_be_added_as_reference:
             if imgui.is_item_clicked():
                 event = self.container.state_cache['event__add_reference']
-                self.handle_event__add_reference(event)
+                root = event.get('root_node')
+                kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
+                self.container.add_leaf_reference(root, self.node, **kwargs)
 
         # TODO: for context menu
         self.container.handle_active_node(self, old_any_active)
@@ -724,7 +720,7 @@ class CodeNodeCreatorWindow(ImguiComponent):
         self.app = app
         self.creation_pos = creation_pos
         self.container = None
-        self.event_publisher = NodeEventPublisher()
+        self.event_registry = NodeEventRegistry.get_instance()
 
         self.input_snippet_name = 'untitled'
         self.input_snippet_path = ''
@@ -754,7 +750,6 @@ class CodeNodeCreatorWindow(ImguiComponent):
         if not isinstance(container, CodeNodeViewer):
             raise TypeError(f'require a container {CodeNodeViewer} to render')
         self.container = container
-        self.event_publisher.register(container)
 
     def close(self):
         self.app.remove_component(self)
@@ -782,8 +777,8 @@ class CodeNodeCreatorWindow(ImguiComponent):
         )
         node = Node(snippet)
         event_args = dict(node=node, node_pos=self.creation_pos)
-        event = NodeEvent('create_node', **event_args)
-        self.event_publisher.dispatch(event)
+        event = NodeEvent('create_node', event_args)
+        self.event_registry.dispatch(event)
         self.close()
 
     def display_error_modal(self, error_msg):
@@ -962,6 +957,10 @@ class CodeNodeViewer(ImguiComponent):
         self.prev_panning_delta = Vec2(0.0, 0.0)
         self.opened = False
         self.state_cache = {}
+
+        self.event_registry = NodeEventRegistry.get_instance()
+        self.event_registry.register('add_reference', self.handle_event__add_reference)
+        self.event_registry.register('create_node', self.handle_event__create_node)
 
         self.init_nodes_and_links()
 
@@ -1211,10 +1210,9 @@ class CodeNodeViewer(ImguiComponent):
         else:
             self.reset_panning_delta()
 
-    # TODO: Replace name-based handler resolution with a decorator to mark
-    # this method as a valid event handler.
-    # event handler for "add_reference"
     def handle_event__add_reference(self, event):
+        # Add this state to `state_cache` to let other components know that
+        # we are handling this event.
         self.state_cache['event__add_reference'] = event
         imgui.set_window_focus_labeled(self.window_name)
 
@@ -1360,6 +1358,12 @@ class CodeNodeViewer(ImguiComponent):
         """Let host application know that this component is going to be closed,
         and clear references to this object in order to release memory."""
         def _close():
+            # Unregister events before being closed. Otherwise, this component
+            # won't be removed successfully.
+            self.event_registry.unregister('add_reference', self.handle_event__add_reference)
+            self.event_registry.unregister('create_node', self.handle_event__create_node)
+            self.event_registry = None
+
             self.app.remove_component(self)
             self.node_components = []
             self.links = []
