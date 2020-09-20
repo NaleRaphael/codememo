@@ -184,7 +184,7 @@ class CodeSnippetWindow(ImguiComponent):
     def window_name(self):
         # NOTE: use `node.uuid` as an identifier to prevent content of nodes with
         # the same name as this node being displayed in the same window.
-        return f'snippet: {self.snippet.name} ##{self.node.uuid}'
+        return f'snippet: {self.snippet.name} ###{self.node.uuid}'
 
     def calculate_window_size(self):
         n_digit = len('%i' % (len(self.rows) + self.snippet.line_start - 1))
@@ -971,7 +971,7 @@ class CodeNodeViewer(ImguiComponent):
         # haven't saved changes.
         self.window_id = int(time.time())
         fn = 'untitled' if fn_src is None else Path(fn_src).with_suffix('').name
-        self.window_name = f'CodeNode Viewer: {fn} ##{self.window_id}'
+        self.window_name = f'CodeNode Viewer: {fn} ###{self.window_id}'
 
         self.node_collection = node_collection
         self.node_components = []
@@ -1032,7 +1032,7 @@ class CodeNodeViewer(ImguiComponent):
 
         # Update window name
         self.fn_src = fn
-        self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name} ##{self.window_id}"
+        self.window_name = f"CodeNode Viewer: {Path(fn).with_suffix('').name} ###{self.window_id}"
 
     def add_leaf_reference(self, root, target, **kwargs):
         try:
@@ -1754,7 +1754,7 @@ class SaveFileDialog(ImguiComponent):
                 )
                 self.confirmation_modal = ConfirmationModal(
                     'Error', msg,
-                    callback_yes=lambda: self.callback() or self.close(),
+                    callback_yes=lambda: self.callback(self.filename) or self.close(),
                 )
             else:
                 # Should not be here...
