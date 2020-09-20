@@ -80,7 +80,13 @@ class MenuBar(ImguiComponent):
     def _menu_file__quit(self):
         clicked, selected = imgui.menu_item('Quit')
         if clicked:
-            exit(1)
+            # Check whether there are unsaved changes before quitting
+            for component in self.app.imgui_components:
+                if hasattr(component, 'close'):
+                    component.close()
+                    break
+            else:
+                exit(1)
 
     def _menu_file__new_project(self):
         clicked, selected = imgui.menu_item('New Project', 'Ctrl+N')
@@ -92,6 +98,16 @@ class MenuBar(ImguiComponent):
 
         if clicked:
             def open_project(fn):
+                # Check whether project has been opened
+                opened_files = [
+                    v.fn_src for v in self.app.imgui_components
+                    if isinstance(v, CodeNodeViewer)
+                ]
+                if fn in opened_files:
+                    msg = 'Project has been opened already.'
+                    GlobalState().push_error(ValueError(msg))
+                    return
+
                 try:
                     node_collection = NodeCollection.load(fn)
                 except Exception as ex:
@@ -1687,7 +1703,9 @@ class SaveFileDialog(ImguiComponent):
         self.app.remove_component(self)
 
     def render(self):
-        if self.always_on_top:
+        # NOTE: If confirmation modal has been created and rendering, we should
+        # not keep setting this window on top.
+        if self.always_on_top and self.confirmation_modal is None:
             imgui.set_next_window_focus()
         _, self.window_opened = imgui.begin(
             'Save file', closable=True,
