@@ -91,7 +91,6 @@ class AppConfig(ConfigBase):
 
     def write(self):
         os.makedirs(AppDefaults.dir_config, exist_ok=True)
-        print(f'writing config file: {AppDefaults.fn_config}')
         with open(AppDefaults.fn_config, 'w') as f:
             json.dump(self.to_dict(), f, indent=2)
 

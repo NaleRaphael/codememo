@@ -14,10 +14,18 @@ from setuptools import setup, find_packages
 
 THIS_DIR = Path(__file__).parent
 
-MAJOR = 0
-MINOR = 1
-MICRO = 0
-VERSION = '{}.{}.{}'.format(MAJOR, MINOR, MICRO)
+
+def get_version(fn_version_setting):
+    version = open(fn_version_setting, 'r').read().strip()
+    parts = version.split('.')
+    if len(parts) != 3 and not all(map(str.isnumeric, parts)):
+        raise RuntimeError('Version string does not follow the standard of semantic versioning 2.0.')
+    return version
+
+
+def write_version_py(fn, version):
+    with open(fn, 'w') as f:
+        f.write(f'__version__ = "{version}"\n')
 
 
 def build_forked_pyimgui():
@@ -114,9 +122,12 @@ def setup_package():
         write_vendor_settings(False)
         data_files = []
 
+    version = get_version('./version.txt')
+    write_version_py('./codememo/version.py', version)
+
     metadata = dict(
         name='codememo',
-        version=VERSION,
+        version=version,
         description=desc,
         author='Nale Raphael',
         author_email='gmccntwxy@gmail.com',
