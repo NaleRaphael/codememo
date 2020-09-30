@@ -1,4 +1,10 @@
 data/
+dev/
+examples/
+experiments/
+imgui.ini
+codememo/vendor/settings.py
+codememo/version.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
