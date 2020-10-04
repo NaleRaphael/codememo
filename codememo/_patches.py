@@ -58,7 +58,7 @@ class PygletMixin(_PygletMixin):
     def __init__(self, *args, **kwargs):
         super(PygletMixin, self).__init__(*args, **kwargs)
 
-        if platform.system() in ['linux']:
+        if sys.platform in ['linux']:
             self.io.get_clipboard_text_fn = self._get_clipboard_text
             self.io.set_clipboard_text_fn = self._set_clipboard_text
 

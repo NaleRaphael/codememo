@@ -2,7 +2,7 @@ import os
 import os.path as osp
 import json
 
-__all__ = ['AppConfig']
+__all__ = ['AppConfig', 'AppHistory']
 
 
 def check_all_keys_exist(template, target):
@@ -54,6 +54,7 @@ class AppDefaults(Defaults):
     dir_home = os.getenv('HOME', osp.expanduser('~'))
     dir_config = osp.join(dir_home, '.codememo')
     fn_config = osp.join(dir_config, 'config.json')
+    fn_history = osp.join(dir_config, 'history.json')
 
 
 class AppConfig(ConfigBase):
@@ -64,6 +65,7 @@ class AppConfig(ConfigBase):
         kwargs = {} if kwargs is None else kwargs
         self.dir_config = AppDefaults.dir_config
         self.fn_config = AppDefaults.fn_config
+        self.fn_history = AppDefaults.fn_history
         self.display = DisplayConfig(
             **kwargs.pop(DisplayConfig.name, {})
         )
@@ -138,3 +140,67 @@ class TextInputConfig(ConfigBase):
         for k in self.keys:
             setattr(self, k, kwargs.pop(k, getattr(TextInputDefaults, k)))
         self._check_remaining_kwargs(**kwargs)
+
+
+class HistoryBase(object):
+    pass
+
+
+class RecentlyOpenedFilesHistory(HistoryBase):
+    limit = 7
+
+    def __init__(self, **kwargs):
+        self.files = kwargs.pop('files', [])
+
+    def to_dict(self):
+        return {'files': self.files}
+
+    def add(self, fn):
+        # If file already exists in list, push it to the top.
+        if fn in self.files:
+            idx = self.files.index(fn)
+            self.files.pop(idx)
+
+        self.files.insert(0, fn)
+        while len(self.files) > self.limit:
+            self.files.pop(-1)
+
+    def clear(self):
+        self.files = []
+
+
+class AppHistory(HistoryBase):
+    # Default values, should be in the form of: `key: (class, default value)`
+    defaults = {
+        'recently_opened_files': (RecentlyOpenedFilesHistory, {'files': []})
+    }
+
+    def __init__(self, fn, **kwargs):
+        super(AppHistory, self).__init__()
+        self.fn = fn
+        kwargs = {} if kwargs is None else kwargs
+        for k, v in self.defaults.items():
+            _cls, default_value = v
+            setattr(self, k, _cls(**kwargs.get(k, default_value)))
+
+    @classmethod
+    def load(cls, fn):
+        if not osp.exists(fn):
+            history = cls(fn)
+            history.write()
+            return history
+        else:
+            with open(fn, 'r', encoding='utf-8') as f:
+                content = json.load(f)
+
+            history = cls(fn, **content)
+            if not check_all_keys_exist(history.to_dict(), content):
+                history.write()
+            return history
+
+    def write(self):
+        with open(self.fn, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    def to_dict(self):
+        return {k: getattr(self, k).to_dict() for k in self.defaults}

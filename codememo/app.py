@@ -10,7 +10,7 @@ from .components import (
     CodeNodeViewer,
     ErrorMessageModal,
 )
-from .config import AppConfig
+from .config import AppConfig, AppHistory
 from .interanl import GlobalState
 
 # There is an issue of managing state of keys in `imgui._IO`, so that we used
@@ -24,6 +24,8 @@ __all__ = ['Application']
 class Application(object):
     def __init__(self):
         self.config = AppConfig.load()
+        self.history = AppHistory.load(self.config.fn_history)
+
         self.frame_update_interval = self.config.display.frame_update_interval
         self.window = pyglet.window.Window(width=960, height=540, resizable=True)
         gl.glClearColor(0, 0, 0, 1)

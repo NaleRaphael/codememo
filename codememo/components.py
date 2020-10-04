@@ -64,6 +64,27 @@ class MenuBar(ImguiComponent):
         self.app = app
         self.file_dialog = None
 
+    def _open_project(self, fn):
+        # Check whether project has been opened
+        opened_files = [
+            v.fn_src for v in self.app.imgui_components
+            if isinstance(v, CodeNodeViewer)
+        ]
+        if fn in opened_files:
+            msg = 'Project has been opened already.'
+            GlobalState().push_error(ValueError(msg))
+            return
+
+        try:
+            node_collection = NodeCollection.load(fn)
+        except Exception as ex:
+            GlobalState().push_error(ex)
+        else:
+            viewer = CodeNodeViewer(self.app, node_collection, fn_src=fn)
+            self.app.add_component(viewer)
+            self.app.history.recently_opened_files.add(fn)
+            self.app.history.write()
+
     def render(self):
         if imgui.begin_main_menu_bar():
             self.render_menu_file()
@@ -73,6 +94,7 @@ class MenuBar(ImguiComponent):
         if imgui.begin_menu('File', True):
             self._menu_file__new_project()
             self._menu_file__open_project()
+            self._menu_file__open_recent()
             imgui.separator()
             self._menu_file__quit()
             imgui.end_menu()
@@ -95,28 +117,17 @@ class MenuBar(ImguiComponent):
 
     def _menu_file__open_project(self):
         clicked, selected = imgui.menu_item('Open Project', 'Ctrl+O')
-
         if clicked:
-            def open_project(fn):
-                # Check whether project has been opened
-                opened_files = [
-                    v.fn_src for v in self.app.imgui_components
-                    if isinstance(v, CodeNodeViewer)
-                ]
-                if fn in opened_files:
-                    msg = 'Project has been opened already.'
-                    GlobalState().push_error(ValueError(msg))
-                    return
+            self.file_dialog = OpenFileDialog(self.app, self._open_project)
 
-                try:
-                    node_collection = NodeCollection.load(fn)
-                except Exception as ex:
-                    GlobalState().push_error(ex)
-                else:
-                    viewer = CodeNodeViewer(self.app, node_collection, fn_src=fn)
-                    self.app.add_component(viewer)
-
-            self.file_dialog = OpenFileDialog(self.app, open_project)
+    def _menu_file__open_recent(self):
+        if imgui.begin_menu('Open Recent', True):
+            for fn in self.app.history.recently_opened_files.files:
+                clicked, selected = imgui.menu_item(fn)
+                if clicked:
+                    self._open_project(fn)
+                    break
+            imgui.end_menu()
 
 
 class CodeSnippetWindow(ImguiComponent):
