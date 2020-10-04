@@ -1,6 +1,21 @@
-"""In `pyimgui` v1.2.0, states of modifier keys won't be reset when keys are
-released, and those states can only be reset when other non-modifier keys
-are pressed. And this module is targeted at solving this issue.
+"""A patch module for integrated backend `pyglet` used by `pyimgui`.
+
+In `pyimgui[pyglet]` v1.2.0:
+- States of modifier keys won't be reset when keys are released, and those states
+  can only be reset when other non-modifier keys are pressed. See also
+  `_on_mods_press()` and `_on_mods_release()` in `PygletMixin` class for the
+  approach we applied to solve this issue.
+
+- Facilities for accessing system clipboard are not supported on Linux, hence that
+  we are not able to copy text from another program and paste it into `imgui`
+  widgets. Since there is no native solution implemented in `pyglet`, we use an
+  external module called `pyperclip` to solve this problem. See also:
+  - https://github.com/swistakm/pyimgui/issues/115
+  - https://github.com/swistakm/pyimgui/pull/144
+
+Note that structure of this module is mostly equal to the original implementation
+in `pyimgui.imgui.intergrations.pyglet` in order to prevent unexpected issues
+related to compatibility.
 """
 import pyglet
 from pyglet.window import key, mouse
@@ -11,11 +26,49 @@ from .vendor.imgui.integrations.opengl import (
 )
 
 
+import sys
+
+if sys.platform == 'linux':
+    # For clipboard support. But note that `xclip` should be installed for Linux user.
+    import pyperclip
+
+
+def use_patch(target_oss):
+    # A slightly modified version from https://stackoverflow.com/a/60244993
+    def func_wrapper(func):
+        frame = sys._getframe().f_back
+        if sys.platform in target_oss:
+            return func
+        elif func.__name__ in frame.f_locals:
+            return frame.f_locals[func.__name__]
+        else:
+            def _not_implemented(*args, **kwargs):
+                msg = f'{func.__qualname__} is not defined for platform {sys.platform}'
+                raise NotImplementedError(msg)
+            return _not_implemented
+    return func_wrapper
+
+
 class PygletMixin(_PygletMixin):
     REVERSE_KEY_MAP = _PygletMixin.REVERSE_KEY_MAP
     REVERSE_KEY_MAP.update({
         98784247808: _PygletMixin.REVERSE_KEY_MAP[key.TAB]
     })
+
+    def __init__(self, *args, **kwargs):
+        super(PygletMixin, self).__init__(*args, **kwargs)
+
+        if platform.system() in ['linux']:
+            self.io.get_clipboard_text_fn = self._get_clipboard_text
+            self.io.set_clipboard_text_fn = self._set_clipboard_text
+
+    @use_patch(target_oss=['linux'])
+    def _get_clipboard_text(self):
+        return pyperclip.paste()
+
+    @use_patch(target_oss=['linux'])
+    def _set_clipboard_text(self, text):
+        pyperclip.copy(text)
 
     def _on_mods_press(self, symbol, mods):
         """

@@ -61,7 +61,7 @@ def write_requirements():
             reqs.append(req_imgui)
 
     with open('./requirements.txt', 'w') as f:
-        f.writelines(reqs)
+        f.writelines('\n'.join(reqs))
 
 
 def get_requirements():

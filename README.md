@@ -1,7 +1,7 @@
 # codememo
 [![Build Status](https://travis-ci.com/NaleRaphael/codememo.svg?token=zhYrgBMjb73CEWtXQwny&branch=master)](https://travis-ci.com/NaleRaphael/codememo)
 
-A note taking tool help you trace code.
+A note taking tool helps you trace code.
 
 ![screenshot](images/codememo_screenshot_01.png)
 
@@ -9,6 +9,11 @@ A note taking tool help you trace code.
 ## Requirements
 ### Minimal requirements
 - `imgui[pyglet] >= 1.2.0`
+- `pyperclip >= 1.8.0`
+
+    This is required for linux users only, because facilities for accessing system clipboard are not supported in the intergrated backend `pyglet` currently.
+
+    And note that `xclip` should be installed in system (if not, you can install it by `$ sudo apt-get install xclip`).
 
 ### Use a patch for multiline input textbox
 It requires to install `Cython` in order to re-compile `pyimgui`. But you don't need to install it manually, all necessary setups will be handled by `setup.py`. 

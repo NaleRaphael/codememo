@@ -1,1 +1,2 @@
 imgui[pyglet]>=1.2.0
+pyperclip>=1.8; sys_platform == 'linux'
