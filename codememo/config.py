@@ -152,6 +152,12 @@ class RecentlyOpenedFilesHistory(HistoryBase):
     def __init__(self, **kwargs):
         self.files = kwargs.pop('files', [])
 
+    def __len__(self):
+        return len(self.files)
+
+    def __iter__(self):
+        return iter(self.files)
+
     def to_dict(self):
         return {'files': self.files}
 

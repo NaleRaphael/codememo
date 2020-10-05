@@ -154,4 +154,4 @@ class TestRecentlyOpenedFilesHistory:
         assert recent_files.files[0] == dummy_files[0]
 
         recent_files.clear()
-        assert len(recent_files.files) == 0
+        assert len(recent_files) == 0
