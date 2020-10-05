@@ -15,6 +15,7 @@ before_cache:
 
 before_install:
   - pip install -U pytest
+  - pip install -U pytest-mock
   - pip install -U pytest-cov
   - pip install codecov
 
