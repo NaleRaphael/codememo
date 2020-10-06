@@ -5,7 +5,10 @@ try:
     from pyglet import gl
     from pyglet.window import key as gk
     from pynput.keyboard import Key, Controller, Listener
-except ImportError:
+except (ImportError, AttributeError):
+    # Since `AttributeError: 'NoneType' object has no attribute '_create_shadow_window'`
+    # will be raised first while we are trying to import `pyglet`, we have
+    # to catch this error too.
     reason = 'require GLU library and a running X server to run'
     pytestmark = pytest.mark.skip(reason=reason)
 
