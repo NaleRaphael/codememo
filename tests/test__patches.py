@@ -1,9 +1,7 @@
 import pytest
-import pyglet
 
 try:
-    pyglet.lib.load_library('GLU')
-    raise ImportError
+    import pyglet
 except ImportError:
     pytestmark = pytest.mark.skip('require GLU library to run')
 
