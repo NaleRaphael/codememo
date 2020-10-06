@@ -4,11 +4,12 @@ try:
     import pyglet
     from pyglet import gl
     from pyglet.window import key as gk
+    from pynput.keyboard import Key, Controller, Listener
 except ImportError:
-    pytestmark = pytest.mark.skip('require GLU library to run')
+    reason = 'require GLU library and a running X server to run'
+    pytestmark = pytest.mark.skip(reason=reason)
 
 import imgui
-from pynput.keyboard import Key, Controller, Listener
 
 from codememo._patches import create_renderer
 
