@@ -3,6 +3,10 @@ omit =
     tests/*
     codememo/vendor/pyimgui/*
 
+    # This should be tested when display is available currently,
+    # so that this won't be run on CI server.
+    codememo/_patches.py
+
     # Wait for the release of the test framework for imgui
     # see also: https://github.com/ocornut/imgui/issues/435
     codememo/app.py
