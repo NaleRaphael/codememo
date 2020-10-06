@@ -1,6 +1,13 @@
 import pytest
-import imgui
 import pyglet
+
+try:
+    pyglet.lib.load_library('GLU')
+    raise ImportError
+except ImportError:
+    pytestmark = pytest.mark.skip('require GLU library to run')
+
+import imgui
 from pyglet import gl
 from pyglet.window import key as gk
 from pynput.keyboard import Key, Controller, Listener
