@@ -16,7 +16,9 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    setup_marker_run_with_display(config, items)
+    # Comment this out to prevnet being in conflict with module level mark.
+    # setup_marker_run_with_display(config, items)
+    pass
 
 
 def setup_marker_run_with_display(config, items):
