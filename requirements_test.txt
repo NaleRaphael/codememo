@@ -1,0 +1,2 @@
+-r requirements.txt
+pynput>=1.7.1

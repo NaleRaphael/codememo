@@ -230,6 +230,7 @@ class KeyStateCache(object):
         self.listener.stop()
 
 
+@pytest.mark.run_with_display
 class TestPatches:
     def test_run(self, key_event_test_cases):
         test_app = KeyTestApplication()
