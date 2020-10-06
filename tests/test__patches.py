@@ -5,6 +5,7 @@ try:
     from pyglet import gl
     from pyglet.window import key as gk
     from pynput.keyboard import Key, Controller, Listener
+    from codememo._patches import create_renderer
 except (ImportError, AttributeError):
     # Since `AttributeError: 'NoneType' object has no attribute '_create_shadow_window'`
     # will be raised first while we are trying to import `pyglet`, we have
@@ -13,9 +14,6 @@ except (ImportError, AttributeError):
     pytestmark = pytest.mark.skip(reason=reason)
 
 import imgui
-
-from codememo._patches import create_renderer
-
 
 VALID_EVENTS = ['press', 'release']
 VALID_KEYNAMES = ['ctrl', 'alt', 'cmd', 'shift']
