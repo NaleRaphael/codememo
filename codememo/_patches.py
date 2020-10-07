@@ -147,6 +147,27 @@ class PygletMixin(_PygletMixin):
             self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = False
         self._on_mods_release(symbol, mods)
 
+    def on_text_motion(self, motion):
+        """Event handler for holding down keys (key repeat).
+        See also: https://pyglet.readthedocs.io/en/latest/programming_guide/keyboard.html#motion-events
+        """
+        pass
+
+    def _attach_callbacks(self, window):
+        window.push_handlers(
+            self.on_mouse_motion,
+            self.on_key_press,
+            self.on_key_release,
+            self.on_text,
+            self.on_text_motion,
+            self.on_mouse_drag,
+            self.on_mouse_press,
+            self.on_mouse_release,
+            self.on_mouse_scroll,
+            self.on_resize,
+        )
+
+
 
 class PygletFixedPipelineRenderer(PygletMixin, FixedPipelineRenderer):
     def __init__(self, window, attach_callbacks=True):
