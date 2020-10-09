@@ -13,6 +13,10 @@ In `pyimgui[pyglet]` v1.2.0:
   - https://github.com/swistakm/pyimgui/issues/115
   - https://github.com/swistakm/pyimgui/pull/144
 
+- Key state of ASCII characters are not handled. Without handling these key states,
+  we won't be able to implement shortcuts for menu items. See also `on_key_press()`
+  and `on_key_release()` in `PygletMixin` class for the approach we applied.
+
 Note that structure of this module is mostly equal to the original implementation
 in `pyimgui.imgui.intergrations.pyglet` in order to prevent unexpected issues
 related to compatibility.
@@ -25,7 +29,7 @@ from .vendor.imgui.integrations.opengl import (
     FixedPipelineRenderer, ProgrammablePipelineRenderer
 )
 
-
+import string
 import sys
 
 if sys.platform == 'linux':
@@ -54,6 +58,17 @@ class PygletMixin(_PygletMixin):
     REVERSE_KEY_MAP.update({
         98784247808: _PygletMixin.REVERSE_KEY_MAP[key.TAB]
     })
+    ASCII_CHAR_SET = set([ord(v) for v in string.ascii_letters + string.digits + string.punctuation])
+
+    # Special keys for text edit operation (reserved by imgui)
+    SPECIAL_KEY_SET = {
+        key.A,  # imgui.KEY_A (CTRL + A)
+        key.C,  # imgui.KEY_C (CTRL + C)
+        key.V,  # imgui.KEY_V (CTRL + V)
+        key.X,  # imgui.KEY_X (CTRL + X)
+        key.Y,  # imgui.KEY_Y (CTRL + Y)
+        key.Z,  # imgui.KEY_Z (CTRL + Z)
+    }
 
     def __init__(self, *args, **kwargs):
         super(PygletMixin, self).__init__(*args, **kwargs)
@@ -61,6 +76,14 @@ class PygletMixin(_PygletMixin):
         if sys.platform in ['linux']:
             self.io.get_clipboard_text_fn = self._get_clipboard_text
             self.io.set_clipboard_text_fn = self._set_clipboard_text
+
+        # A flag indicating whether a special key is pressed or not. We can
+        # use this flag to memorize whether one of key combination in
+        # `SPECIAL_KEY_SET` is presented, then we can reset the correct key
+        # without considering the order of releasing key. That is, once `CTRL+A`
+        # is presented, `io.key_map[imgui.KEY_A]` will be reset no matter the
+        # order of releasing keys is `CTRL, A` or `A, CTRL`.
+        self._is_special_key_pressed = False
 
     @use_patch(target_oss=['linux'])
     def _get_clipboard_text(self):
@@ -138,13 +161,37 @@ class PygletMixin(_PygletMixin):
         self.io.key_shift = (symbol not in (key.LSHIFT, key.RSHIFT)) and ((mods & key.MOD_SHIFT) or self.io.key_shift)
 
     def on_key_press(self, symbol, mods):
-        if symbol in self.REVERSE_KEY_MAP:
-            self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = True
+        # We have to check modifiers before handling other keys since there
+        # are special keys requiring checking the state of CTRL key.
         self._on_mods_press(symbol, mods)
+
+        if symbol in self.REVERSE_KEY_MAP:
+            if symbol in self.SPECIAL_KEY_SET:
+                if self.io.key_ctrl:
+                    # Incoming key code are actually a special key for text
+                    # edit and CTRL is also pressed
+                    self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = True
+                    self._is_special_key_pressed = True
+                else:
+                    self.io.keys_down[symbol] = True
+            else:
+                self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = True
+        elif symbol in self.ASCII_CHAR_SET:
+            self.io.keys_down[symbol] = True
 
     def on_key_release(self, symbol, mods):
         if symbol in self.REVERSE_KEY_MAP:
-            self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = False
+            if symbol in self.SPECIAL_KEY_SET:
+                if self._is_special_key_pressed:
+                    self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = False
+                    self._is_special_key_pressed = False
+                else:
+                    self.io.keys_down[symbol] = False
+            else:
+                self.io.keys_down[self.REVERSE_KEY_MAP[symbol]] = False
+        elif symbol in self.ASCII_CHAR_SET:
+            self.io.keys_down[symbol] = False
+
         self._on_mods_release(symbol, mods)
 
     def on_text_motion(self, motion):
@@ -166,7 +213,6 @@ class PygletMixin(_PygletMixin):
             self.on_mouse_scroll,
             self.on_resize,
         )
-
 
 
 class PygletFixedPipelineRenderer(PygletMixin, FixedPipelineRenderer):
