@@ -134,16 +134,21 @@ class MenuBar(ImguiComponent):
         clicked = False
         if not triggered_by_shortcut:
             clicked = imgui.menu_item('Open Project', 'Ctrl+O')[0]
-        if clicked or triggered_by_shortcut:
+        if (clicked or triggered_by_shortcut) and (self.file_dialog is None):
             self.file_dialog = OpenFileDialog(self.app, self._open_project)
 
     def _menu_file__open_recent(self):
         if imgui.begin_menu('Open Recent', True):
-            for fn in self.app.history.recently_opened_files.files:
+            for fn in self.app.history.recently_opened_files:
                 clicked, selected = imgui.menu_item(fn)
                 if clicked:
                     self._open_project(fn)
                     break
+            imgui.separator()
+            if imgui.menu_item('Clear Recently Opened')[0]:
+                if len(self.app.history.recently_opened_files) != 0:
+                    self.app.history.recently_opened_files.clear()
+                    self.app.history.write()
             imgui.end_menu()
 
 
@@ -1015,7 +1020,7 @@ class CodeNodeViewer(ImguiComponent):
 
         # Screen position of node canvas, it can be use as a reference to
         # calculate mousce position on canvas when we are going to create
-        # a node. And here it's just an initail value, it should be updated
+        # a node. And here it's just an initial value, it should be updated
         # by `self.draw_node_canvas()`.
         self._canvas_screen_pos = Vec2(0.0, 0.0)
 
