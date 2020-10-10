@@ -28,40 +28,44 @@ class ShortcutRegistry(object):
         self.io = io
         self.registry = {}
 
-        # used to store name of triggered shortcuts
-        self.triggered_shortcuts = set()
+        # used to store name of triggered shortcut
+        self.triggered_shortcut = None
         # used to store name of edge-triggered shortcuts
         self.edge_triggered_shortcuts = set()
-        # used to store name of edge-triggered shortcuts that have been triggered
-        self.prev_edge_triggered_shortcuts = set()
-
-    @property
-    def has_triggered_shortcuts(self):
-        return len(self.triggered_shortcuts) != 0
+        # used to store name of edge-triggered shortcut that have been triggered
+        self.prev_edge_triggered_shortcut = None
 
     def poll(self):
         """Iterate all registered shortcuts and check whether they are triggered."""
+        candidates = []
         for name in self.registry:
             if self.is_triggered(name):
-                if name in self.edge_triggered_shortcuts & self.prev_edge_triggered_shortcuts:
+                if name in self.edge_triggered_shortcuts and self.prev_edge_triggered_shortcut:
                     # it's an edge-triggered shortcut and it has been triggered
                     continue
                 else:
                     # it's not an edge-triggered shortcut, so it can be triggered repeatedly
-                    self.triggered_shortcuts.add(name)
+                    candidates.append(name)
             else:
                 # reset cache for edge-triggered shortcut
-                if name in self.edge_triggered_shortcuts & self.prev_edge_triggered_shortcuts:
-                    self.prev_edge_triggered_shortcuts.remove(name)
+                if name == self.prev_edge_triggered_shortcut:
+                    self.prev_edge_triggered_shortcut = None
+
+        if len(candidates) >= 2:
+            # handle cases with partially equal key combination, e.g. 'CTRL+S' and `CTRL+SHIFT+S`
+            num_key_bindings = [len(self.registry[name]) for name in candidates]
+            idx = max(range(len(num_key_bindings)), key=lambda i: num_key_bindings[i])
+            self.triggered_shortcut = candidates[idx]
+        elif len(candidates) == 1:
+            self.triggered_shortcut = candidates[0]
 
     def clear(self):
         for name in self.registry:
             # If there is any edge-triggered shortcut was triggered, store them into
             # `prev_edge_triggered_shortcuts` to avoid them being triggered repeatedly.
-            if name in self.edge_triggered_shortcuts & self.triggered_shortcuts:
-                self.triggered_shortcuts.remove(name)
-                self.prev_edge_triggered_shortcuts.add(name)
-        self.triggered_shortcuts.clear()
+            if name in self.edge_triggered_shortcuts and self.triggered_shortcut:
+                self.prev_edge_triggered_shortcut = name
+        self.triggered_shortcut = None
 
     def register(self, name, key_bindings, is_edge_triggered=True):
         """Register shortcut.
