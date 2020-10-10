@@ -89,11 +89,13 @@ class MenuBar(ImguiComponent):
             self.app.history.write()
 
     def handle_shortcuts(self):
-        if not self.app.shortcuts_registry.has_triggered_shortcuts:
+        action_name = self.app.shortcuts_registry.triggered_shortcut
+        if action_name is None:
             return
-        action_name = self.app.shortcuts_registry.triggered_shortcuts.pop()
-        action = getattr(self, f'_menu_file__{action_name}')
-        action(triggered_by_shortcut=True)
+
+        action = getattr(self, f'_menu_file__{action_name}', None)
+        if action:
+            action(triggered_by_shortcut=True)
 
     def render(self):
         if imgui.begin_main_menu_bar():
