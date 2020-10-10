@@ -64,6 +64,9 @@ class MenuBar(ImguiComponent):
         self.app = app
         self.file_dialog = None
 
+        self.app.shortcuts_registry.register('open_project', ['ctrl', 'o'])
+        self.app.shortcuts_registry.register('new_project', ['ctrl', 'n'])
+
     def _open_project(self, fn):
         # Check whether project has been opened
         opened_files = [
@@ -85,10 +88,18 @@ class MenuBar(ImguiComponent):
             self.app.history.recently_opened_files.add(fn)
             self.app.history.write()
 
+    def handle_shortcuts(self):
+        if not self.app.shortcuts_registry.has_triggered_shortcuts:
+            return
+        action_name = self.app.shortcuts_registry.triggered_shortcuts.pop()
+        action = getattr(self, f'_menu_file__{action_name}')
+        action(triggered_by_shortcut=True)
+
     def render(self):
         if imgui.begin_main_menu_bar():
             self.render_menu_file()
             imgui.end_main_menu_bar()
+        self.handle_shortcuts()
 
     def render_menu_file(self):
         if imgui.begin_menu('File', True):
@@ -110,14 +121,18 @@ class MenuBar(ImguiComponent):
             else:
                 exit(1)
 
-    def _menu_file__new_project(self):
-        clicked, selected = imgui.menu_item('New Project', 'Ctrl+N')
-        if clicked:
+    def _menu_file__new_project(self, triggered_by_shortcut=False):
+        clicked = False
+        if not triggered_by_shortcut:
+            clicked = imgui.menu_item('New Project', 'Ctrl+N')[0]
+        if clicked or triggered_by_shortcut:
             self.app.add_component(CodeNodeViewer(self.app, NodeCollection([])))
 
-    def _menu_file__open_project(self):
-        clicked, selected = imgui.menu_item('Open Project', 'Ctrl+O')
-        if clicked:
+    def _menu_file__open_project(self, triggered_by_shortcut=False):
+        clicked = False
+        if not triggered_by_shortcut:
+            clicked = imgui.menu_item('Open Project', 'Ctrl+O')[0]
+        if clicked or triggered_by_shortcut:
             self.file_dialog = OpenFileDialog(self.app, self._open_project)
 
     def _menu_file__open_recent(self):
