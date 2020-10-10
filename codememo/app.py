@@ -12,6 +12,7 @@ from .components import (
 )
 from .config import AppConfig, AppHistory
 from .interanl import GlobalState
+from .shortcuts import ShortcutRegistry, PygletIOWrapper
 
 # There is an issue of managing state of keys in `imgui._IO`, so that we used
 # a patched version of facilities which are originally provided in
@@ -33,6 +34,8 @@ class Application(object):
         imgui.create_context()
         self.imgui_impl = create_renderer(self.window)
 
+        self.shortcuts_registry = ShortcutRegistry(PygletIOWrapper(self.imgui_impl.io))
+
         self.imgui_components = []
         self.init_components()
         self.init_draw_process()
@@ -48,6 +51,7 @@ class Application(object):
     def init_draw_process(self):
         def update(dt):
             imgui.new_frame()
+            self.shortcuts_registry.poll()
             try:
                 for component in self.imgui_components:
                     while self._internal_state.error_occured:
@@ -56,6 +60,7 @@ class Application(object):
                     component.render()
             except Exception as ex:
                 self.dump_data(ex)
+            self.shortcuts_registry.clear()
 
         @self.window.event
         def on_draw():
