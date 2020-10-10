@@ -1048,6 +1048,14 @@ class CodeNodeViewer(ImguiComponent):
             self.handle_event__create_node
         )
 
+        # TODO: This is currently a workaround to handle local shortcuts for those
+        # widgets that may exist multiple instances simultaneously. This approach
+        # should be improved in the future.
+        if 'save' not in self.app.shortcuts_registry.registry:
+            self.app.shortcuts_registry.register('save', ['ctrl', 's'])
+        if 'save_as' not in self.app.shortcuts_registry.registry:
+            self.app.shortcuts_registry.register('save_as', ['ctrl', 'shift', 's'])
+
         self.init_nodes_and_links()
 
     @classmethod
@@ -1200,19 +1208,32 @@ class CodeNodeViewer(ImguiComponent):
         imgui.pop_item_width()
         imgui.end_child()
 
-    def handle_menu_item_save(self):
-        clicked, selected = imgui.menu_item('Save', 'Ctrl+S')
+    def handle_shortcuts(self):
+        action_name = self.app.shortcuts_registry.triggered_shortcut
+        if action_name is None:
+            return
 
-        if clicked:
+        action = getattr(self, f'handle_menu_item_{action_name}', None)
+        # TODO: action cannot be triggered if focus is at canvas or node list
+        if action and imgui.is_window_focused():
+            action(triggered_by_shortcut=True)
+
+    def handle_menu_item_save(self, triggered_by_shortcut=False):
+        clicked = False
+        if not triggered_by_shortcut:
+            clicked = imgui.menu_item('Save', 'Ctrl+S')[0]
+        if clicked or triggered_by_shortcut:
             if self.fn_src is not None:
                 self.save_data(self.fn_src)
             else:
                 # This viewer is opened from scratch, so that it's `fn_src` is None
                 self.file_dialog = SaveFileDialog(self.app, self.save_data)
 
-    def handle_menu_item_save_as(self):
-        clicked, selected = imgui.menu_item('Save as')
-        if clicked:
+    def handle_menu_item_save_as(self, triggered_by_shortcut=False):
+        clicked = False
+        if not triggered_by_shortcut:
+            clicked = imgui.menu_item('Save as')[0]
+        if clicked or triggered_by_shortcut:
             self.file_dialog = SaveFileDialog(self.app, self.save_data)
 
     def handle_menu_item_close(self):
@@ -1522,6 +1543,7 @@ class CodeNodeViewer(ImguiComponent):
         imgui.set_window_size(600, 400)
         self.handle_state()
         self.handle_file_dialog()
+        self.handle_shortcuts()
         self.display_menu_bar()
         self.draw_node_list()
         imgui.same_line()
