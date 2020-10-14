@@ -360,7 +360,7 @@ class CodeSnippetWindow(ImguiComponent):
         imgui.set_column_width(0, self.width_lineno)
 
         for i, row in enumerate(self.rows):
-            imgui.text(str(i+1))
+            imgui.text(str(self.snippet.line_start + i))
             imgui.next_column()
             self.handle_selectable_row(i, row)
             imgui.next_column()
