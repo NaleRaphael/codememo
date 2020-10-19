@@ -97,11 +97,16 @@ class MenuBar(ImguiComponent):
         if action:
             action(triggered_by_shortcut=True)
 
+    def handle_file_dialog(self):
+        if self.file_dialog and self.file_dialog.terminated:
+            self.file_dialog = None
+
     def render(self):
         if imgui.begin_main_menu_bar():
             self.render_menu_file()
             imgui.end_main_menu_bar()
         self.handle_shortcuts()
+        self.handle_file_dialog()
 
     def render_menu_file(self):
         if imgui.begin_menu('File', True):
