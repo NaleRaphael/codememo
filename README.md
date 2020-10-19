@@ -1,5 +1,8 @@
 # codememo
 [![Build Status](https://travis-ci.com/NaleRaphael/codememo.svg?token=zhYrgBMjb73CEWtXQwny&branch=master)](https://travis-ci.com/NaleRaphael/codememo)
+[![codecov](https://codecov.io/gh/NaleRaphael/codememo/branch/master/graph/badge.svg)](https://codecov.io/gh/NaleRaphael/codememo)
+[![release](https://img.shields.io/github/release/naleraphael/codememo.svg?color=blue)](https://github.com/NaleRaphael/codememo/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 A note taking tool helps you trace code.
 
