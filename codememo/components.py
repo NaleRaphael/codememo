@@ -64,8 +64,8 @@ class MenuBar(ImguiComponent):
         self.app = app
         self.file_dialog = None
 
-        self.app.shortcuts_registry.register('open_project', ['ctrl', 'o'])
-        self.app.shortcuts_registry.register('new_project', ['ctrl', 'n'])
+        self.app.shortcuts_registry.register('open_project', ['ctrl', 'o'], edge_trigger='positive')
+        self.app.shortcuts_registry.register('new_project', ['ctrl', 'n'], edge_trigger='positive')
 
     def _open_project(self, fn):
         # Check whether project has been opened

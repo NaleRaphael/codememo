@@ -22,6 +22,8 @@ class PygletIOWrapper(IOWrapper):
 
 
 class ShortcutRegistry(object):
+    EDGE_TRIGGER_TYPES = ['positive', 'negative']
+
     def __init__(self, io):
         if not isinstance(io, IOWrapper):
             raise TypeError(f'`io` should be an instance of {IOWrapper}')
@@ -30,19 +32,28 @@ class ShortcutRegistry(object):
 
         # used to store name of triggered shortcut
         self.triggered_shortcut = None
-        # used to store name of edge-triggered shortcuts
-        self.edge_triggered_shortcuts = set()
+        # used to store name of edge-triggered shortcut
+        self.edge_triggered_shortcut = None
         # used to store name of edge-triggered shortcut that have been triggered
         self.prev_edge_triggered_shortcut = None
+
+        # registry of edge-triggered shortcuts; positive: key down, negative: key up
+        self.positive_edge_triggered_registry = set()
+        self.negative_edge_triggered_registry = set()
 
     def poll(self):
         """Iterate all registered shortcuts and check whether they are triggered."""
         candidates = []
         for name in self.registry:
-            if self.is_triggered(name):
-                if name in self.edge_triggered_shortcuts and self.prev_edge_triggered_shortcut:
-                    # it's an edge-triggered shortcut and it has been triggered
-                    continue
+            if self.is_pressed(name):
+                if name in self.positive_edge_triggered_registry:
+                    # if all keys in combination are pressed, we should not trigger it again
+                    if not self.prev_edge_triggered_shortcut:
+                        self.edge_triggered_shortcut = name
+                        candidates.append(name)
+                elif name in self.negative_edge_triggered_registry:
+                    if not self.edge_triggered_shortcut:
+                        self.edge_triggered_shortcut = name
                 else:
                     # it's not an edge-triggered shortcut, so it can be triggered repeatedly
                     candidates.append(name)
@@ -50,6 +61,11 @@ class ShortcutRegistry(object):
                 # reset cache for edge-triggered shortcut
                 if name == self.prev_edge_triggered_shortcut:
                     self.prev_edge_triggered_shortcut = None
+                # negative-edge-triggered (key up)
+                if name == self.edge_triggered_shortcut:
+                    candidates.append(self.edge_triggered_shortcut)
+                    self.prev_edge_triggered_shortcut = self.edge_triggered_shortcut
+                    self.edge_triggered_shortcut = None
 
         if len(candidates) >= 2:
             # handle cases with partially equal key combination, e.g. 'CTRL+S' and `CTRL+SHIFT+S`
@@ -60,14 +76,14 @@ class ShortcutRegistry(object):
             self.triggered_shortcut = candidates[0]
 
     def clear(self):
-        for name in self.registry:
-            # If there is any edge-triggered shortcut was triggered, store them into
-            # `prev_edge_triggered_shortcuts` to avoid them being triggered repeatedly.
-            if name in self.edge_triggered_shortcuts and self.triggered_shortcut:
-                self.prev_edge_triggered_shortcut = name
+        """Clear cached state of triggered shortcut."""
+        if self.triggered_shortcut in self.positive_edge_triggered_registry:
+            self.prev_edge_triggered_shortcut = self.triggered_shortcut
+            self.edge_triggered_shortcut = None
+
         self.triggered_shortcut = None
 
-    def register(self, name, key_bindings, is_edge_triggered=True):
+    def register(self, name, key_bindings, edge_trigger=None):
         """Register shortcut.
 
         Parameters
@@ -76,9 +92,11 @@ class ShortcutRegistry(object):
             Name of shortcut.
         key_bindings : list of str
             Combination of keys for shortcut.
-        is_edge_triggered : bool, optional
-            If true, this shortcut can only be triggered when keys are pressed down,
-            and it won't be triggered repeatedly when keys are hold.
+        edge_trigger : str, one of ['positive', 'negative']
+            Indicate given shortcut should be triggered only when keys are pressed
+            down or released, so that shortcut won't be triggered repeatedly when
+            keys are hold. Default is `None` and that means shortcut can be triggered
+            repeatedly.
         """
         if name in self.registry:
             raise ValueError(f'shortcut for `{name}` has already been registered.')
@@ -89,17 +107,22 @@ class ShortcutRegistry(object):
             raise ValueError(f'duplicate keys detected in `key_bindings`')
 
         self.registry.update({name: key_bindings})
-        if is_edge_triggered:
-            self.edge_triggered_shortcuts.add(name)
+        if edge_trigger in self.EDGE_TRIGGER_TYPES:
+            if edge_trigger == 'positive':
+                self.positive_edge_triggered_registry.add(name)
+            elif edge_trigger == 'negative':
+                self.negative_edge_triggered_registry.add(name)
 
     def unregister(self, name):
         if name not in self.registry:
             raise ValueError(f'shortcut for `{name}` has not yet been registered.')
         self.registry.remove(name)
-        if name in self.edge_triggered_shortcuts:
-            self.edge_triggered_shortcuts.remove(name)
+        if name in self.positive_edge_triggered_registry:
+            self.positive_edge_triggered_registry.remove(name)
+        if name in self.negative_edge_triggered_registry:
+            self.negative_edge_triggered_registry.remove(name)
 
-    def is_triggered(self, name):
+    def is_pressed(self, name):
         if name not in self.registry:
             raise ValueError(f'shortcut for `{name}` has not yet been registered.')
         return all([self.io.is_key_pressed(k) for k in self.registry[name]])
