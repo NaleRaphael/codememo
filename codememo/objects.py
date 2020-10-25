@@ -564,7 +564,6 @@ class NodeCollection(object):
         nodes_dict = {v['uuid']: Node.from_dict(v) for v in data['nodes']}
 
         for node_uuid, node_data in data_dict.items():
-            root_uuid = node_data['root']
             leaves_uuid = node_data['leaves']
 
             for leaf_uuid in leaves_uuid:

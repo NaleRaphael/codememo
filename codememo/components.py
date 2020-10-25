@@ -1465,7 +1465,7 @@ class CodeNodeViewer(ImguiComponent):
         # Reserved space for search box
         height = -23 if self.is_in_search_mode else 0
 
-        imgui.begin_child('node-list', self._node_list_width, height, border=True, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        imgui.begin_child('node-list', self._node_list_width, height, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
         imgui.text('nodes')
         imgui.separator()
 
