@@ -88,6 +88,19 @@ class MenuBar(ImguiComponent):
             self.app.history.recently_opened_files.add(fn)
             self.app.history.write()
 
+    def _import_from_file(self, fn):
+        from .graph_parsers import get_graph_parser
+
+        try:
+            parser_type = Path(fn).suffix
+            parser = get_graph_parser(parser_type)
+            node_collection = parser.parse(fn)
+        except Exception as ex:
+            GlobalState().push_error(ex)
+        else:
+            viewer = CodeNodeViewer(self.app, node_collection)
+            self.app.add_component(viewer)
+
     def handle_shortcuts(self):
         action_name = self.app.shortcuts_registry.triggered_shortcut
         if action_name is None:
@@ -104,6 +117,7 @@ class MenuBar(ImguiComponent):
     def render(self):
         if imgui.begin_main_menu_bar():
             self.render_menu_file()
+            self.render_menu_import()
             imgui.end_main_menu_bar()
         self.handle_shortcuts()
         self.handle_file_dialog()
@@ -115,6 +129,11 @@ class MenuBar(ImguiComponent):
             self._menu_file__open_recent()
             imgui.separator()
             self._menu_file__quit()
+            imgui.end_menu()
+
+    def render_menu_import(self):
+        if imgui.begin_menu('Import', True):
+            self._menu_import__from_dot_file()
             imgui.end_menu()
 
     def _menu_file__quit(self):
@@ -155,6 +174,11 @@ class MenuBar(ImguiComponent):
                     self.app.history.recently_opened_files.clear()
                     self.app.history.write()
             imgui.end_menu()
+
+    def _menu_import__from_dot_file(self):
+        clicked = imgui.menu_item('From .dot')[0]
+        if clicked and (self.file_dialog is None):
+            self.file_dialog = OpenFileDialog(self.app, self._import_from_file)
 
 
 class CodeSnippetWindow(ImguiComponent):

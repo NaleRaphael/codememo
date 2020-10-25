@@ -6,6 +6,9 @@ imgui.ini
 codememo/vendor/settings.py
 codememo/version.py
 
+# Files related to call graph
+*.dot
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[co]
