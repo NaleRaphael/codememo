@@ -266,9 +266,6 @@ class CodeSnippetWindow(ImguiComponent):
     def reset_selected(self):
         self.selected = [False] * len(self.rows)
 
-    def reset_hsplitter_draggin_delta_y(self):
-        self.prev_hsplitter_dragging_delta_y = 0.0
-
     def get_selected_lines(self):
         start = self.selected.index(True) + 1
         stop = len(self.selected) - self.selected[::-1].index(True)
@@ -322,18 +319,18 @@ class CodeSnippetWindow(ImguiComponent):
             imgui.button('##hsplitter', *imgui.Vec2(-5, 2))
             imgui.invisible_button('##spacing', *imgui.Vec2(-1, 3))
             imgui.end_group()
-            imgui.pop_style_color()
-            imgui.pop_style_color()
-            imgui.pop_style_color()
+            imgui.pop_style_color(3)
 
             if imgui.is_item_active():
                 if imgui.is_mouse_dragging(0):
                     curr_delta = imgui.get_mouse_drag_delta(0).y
                     delta = curr_delta - self.prev_hsplitter_dragging_delta_y
-                    self.snippet_window_height += delta
+                    new_height = self.snippet_window_height + delta
+                    if new_height < -self.DEFAULT_COMMENT_WINDOW_HEIGHT:
+                        self.snippet_window_height = new_height
                     self.prev_hsplitter_dragging_delta_y = curr_delta
                 else:
-                    self.reset_hsplitter_draggin_delta_y()
+                    self.prev_hsplitter_dragging_delta_y = 0.0
                 if imgui.is_mouse_double_clicked():
                     self.snippet_window_height = self.DEFAULT_SNIPPET_WINDOW_HEIGHT
         else:
@@ -1014,6 +1011,8 @@ class CodeNodeViewer(ImguiComponent):
     """ A viewer for CodeNodeComponent.
     reference: https://gist.github.com/ocornut/7e9b3ec566a333d725d4
     """
+    DEFAULT_NODE_LIST_WIDTH = 100.0
+
     def __init__(self, app, node_collection, fn_src=None):
         """
         Parameters
@@ -1047,6 +1046,8 @@ class CodeNodeViewer(ImguiComponent):
         # id being used by newly created node.
         self._id_auto_increment = len(self.node_collection)
 
+        self._node_list_width = self.DEFAULT_NODE_LIST_WIDTH
+
         # Screen position of node canvas, it can be use as a reference to
         # calculate mousce position on canvas when we are going to create
         # a node. And here it's just an initial value, it should be updated
@@ -1066,6 +1067,7 @@ class CodeNodeViewer(ImguiComponent):
 
         self.prev_dragging_delta = Vec2(0.0, 0.0)
         self.prev_panning_delta = Vec2(0.0, 0.0)
+        self.prev_vsplitter_dragging_delta_x = 0.0
         self.opened = False
         self.state_cache = {}
 
@@ -1446,7 +1448,7 @@ class CodeNodeViewer(ImguiComponent):
             imgui.pop_id()
 
     def draw_node_list(self):
-        imgui.begin_child('node-list', 100, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        imgui.begin_child('node-list', self._node_list_width, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
         imgui.text('nodes')
         imgui.separator()
 
@@ -1498,6 +1500,24 @@ class CodeNodeViewer(ImguiComponent):
             draw_list.add_text(*pos, imgui.get_color_u32_rgba(1,1,0,1), msg)
 
         imgui.end_group()
+
+    def draw_vsplitter(self):
+        imgui.begin_group()
+        imgui.invisible_button('##vsplitter', *imgui.Vec2(6, -1))
+        imgui.end_group()
+
+        if imgui.is_item_active():
+            if imgui.is_mouse_dragging(0):
+                curr_delta = imgui.get_mouse_drag_delta(0).x
+                delta = curr_delta - self.prev_vsplitter_dragging_delta_x
+                new_width = self._node_list_width + delta
+                if imgui.get_window_content_region_width() > new_width >= 0.5*self.DEFAULT_NODE_LIST_WIDTH:
+                    self._node_list_width = new_width
+                self.prev_vsplitter_dragging_delta_x = curr_delta
+            else:
+                self.prev_vsplitter_dragging_delta_x = 0.0
+            if imgui.is_mouse_double_clicked():
+                self._node_list_width = self.DEFAULT_NODE_LIST_WIDTH
 
     def display_menu_bar(self):
         imgui.begin_menu_bar()
@@ -1584,7 +1604,9 @@ class CodeNodeViewer(ImguiComponent):
         self.handle_shortcuts()
         self.display_menu_bar()
         self.draw_node_list()
-        imgui.same_line()
+        imgui.same_line(self._node_list_width + 10.0)
+        self.draw_vsplitter()
+        imgui.same_line(self._node_list_width + 18.0)
         imgui.begin_group()
         self.draw_node_canvas()
         imgui.end_group()
