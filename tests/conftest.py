@@ -16,7 +16,7 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    # Comment this out to prevnet being in conflict with module level mark.
+    # Comment this out to prevent being in conflict with module level mark.
     # setup_marker_run_with_display(config, items)
     pass
 

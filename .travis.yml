@@ -18,6 +18,8 @@ before_install:
   - pip install -U pytest-mock
   - pip install -U pytest-cov
   - pip install codecov
+  # dependencies for call graph
+  - sudo apt-get install graphviz
 
 install:
   - pip install ./
