@@ -1,4 +1,4 @@
-import time
+import time, re
 from pathlib import Path
 
 from .vendor import imgui
@@ -1012,6 +1012,7 @@ class CodeNodeViewer(ImguiComponent):
     reference: https://gist.github.com/ocornut/7e9b3ec566a333d725d4
     """
     DEFAULT_NODE_LIST_WIDTH = 100.0
+    SEARCH_TEXT_MAX_LENGTH = 128
 
     def __init__(self, app, node_collection, fn_src=None):
         """
@@ -1036,6 +1037,7 @@ class CodeNodeViewer(ImguiComponent):
 
         self.node_collection = node_collection
         self.node_components = []
+        self.filtered_node_components = []
         self.links = []
         self.id_selected = -1
         self.id_hovered_in_list = -1
@@ -1070,6 +1072,9 @@ class CodeNodeViewer(ImguiComponent):
         self.prev_vsplitter_dragging_delta_x = 0.0
         self.opened = False
         self.state_cache = {}
+
+        self.search_text = ''
+        self.is_in_search_mode = False
 
         # NOTE: We have to register event with window ID. Otherwise, handler in
         # multiple instances of `CodeNodeViewer` will be triggered with the same
@@ -1295,6 +1300,13 @@ class CodeNodeViewer(ImguiComponent):
             if not self.enable_reference_highlight:
                 self.reset_highlighted_lines_in_snippet()
 
+    def handle_menu_item_search_list(self):
+        if imgui.menu_item('Search List')[0]:
+            self.is_in_search_mode = not self.is_in_search_mode
+            # Initialize list for display
+            if self.is_in_search_mode:
+                self.filtered_node_components = self.node_components
+
     def handle_state(self):
         if self.state_cache:
             # Remove event and arguments of "add_reference" if this window is
@@ -1448,11 +1460,19 @@ class CodeNodeViewer(ImguiComponent):
             imgui.pop_id()
 
     def draw_node_list(self):
-        imgui.begin_child('node-list', self._node_list_width, 0, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
+        imgui.begin_group()
+
+        # Reserved space for search box
+        height = -23 if self.is_in_search_mode else 0
+
+        imgui.begin_child('node-list', self._node_list_width, height, border=True, flags=imgui.WINDOW_HORIZONTAL_SCROLLING_BAR)
         imgui.text('nodes')
         imgui.separator()
 
-        for node_component in self.node_components:
+        # Switch to filtered result when search mode is enabled
+        node_components = self.filtered_node_components if self.is_in_search_mode else self.node_components
+
+        for node_component in node_components:
             imgui.push_id(str(node_component.id))
             clicked, selected = imgui.selectable(
                 node_component.name, node_component.id == self.id_selected
@@ -1467,8 +1487,28 @@ class CodeNodeViewer(ImguiComponent):
                     self.panning = 0.5 * self._canvas_size - node_component.pos - node_component.size
                 self.id_hovered_in_list = node_component.id
             imgui.pop_id()
-
         imgui.end_child()
+
+        if self.is_in_search_mode:
+            self.draw_node_list_search_box()
+        imgui.end_group()
+
+    def draw_node_list_search_box(self):
+        imgui.push_item_width(self._node_list_width)
+        changed, text = imgui.input_text(
+            '##list-search-box', self.search_text, self.SEARCH_TEXT_MAX_LENGTH
+        )
+        imgui.pop_item_width()
+
+        if changed:
+            self.search_text = text
+            if len(self.search_text) > 1:
+                regex = re.compile(self.search_text)
+                self.filtered_node_components = [
+                    v for v in self.node_components if regex.search(v.node.snippet.name)
+                ]
+            else:
+                self.filtered_node_components = self.node_components
 
     def draw_node_canvas(self):
         self.reset_hovered_id_cache()
@@ -1531,6 +1571,9 @@ class CodeNodeViewer(ImguiComponent):
             self.handle_menu_item_rearrange_nodes()
             self.handle_menu_item_show_grid()
             self.handle_menu_item_enable_reference_highlight()
+            imgui.end_menu()
+        if imgui.begin_menu('List'):
+            self.handle_menu_item_search_list()
             imgui.end_menu()
         imgui.end_menu_bar()
 
