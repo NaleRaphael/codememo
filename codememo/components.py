@@ -1052,6 +1052,8 @@ class CodeNodeViewer(ImguiComponent):
         # a node. And here it's just an initial value, it should be updated
         # by `self.draw_node_canvas()`.
         self._canvas_screen_pos = Vec2(0.0, 0.0)
+        # Size of canvas. This should be updated while drawing canvas.
+        self._canvas_size = Vec2(0.0, 0.0)
 
         # --- Flags for view control
         # Show grid
@@ -1454,12 +1456,13 @@ class CodeNodeViewer(ImguiComponent):
                 node_component.name, node_component.id == self.id_selected
             )
             if clicked:
-                # TODO: If selected node is not in the visible range, pan the canvas
-                # until it shows up.
-
                 # Highlight those referenced lines in root node
                 self.handle_selected_node(node_component)
             if imgui.is_item_hovered():
+                # Pan canvas to proper position to make selected node locate at the
+                # center of visible region
+                if imgui.is_mouse_double_clicked():
+                    self.panning = 0.5 * self._canvas_size - node_component.pos - node_component.size
                 self.id_hovered_in_list = node_component.id
             imgui.pop_id()
 
@@ -1472,6 +1475,7 @@ class CodeNodeViewer(ImguiComponent):
         self.init_canvas()
 
         self._canvas_screen_pos = Vec2(*imgui.get_cursor_screen_pos())
+        self._canvas_size = Vec2(*imgui.get_window_size())
         offset = self._canvas_screen_pos + self.panning
         draw_list = imgui.get_window_draw_list()
 
