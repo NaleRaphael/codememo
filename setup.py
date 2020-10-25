@@ -14,6 +14,9 @@ from setuptools import setup, find_packages
 
 THIS_DIR = Path(__file__).parent
 
+EXTRAS_REQUIRE = {
+    'dot': ['pygraphviz', 'networkx'],
+}
 
 def get_version(fn_version_setting):
     version = open(fn_version_setting, 'r').read().strip()
@@ -136,6 +139,7 @@ def setup_package():
         package_dir={'codememo': 'codememo'},
         data_files=data_files,
         install_requires=get_requirements(),
+        extras_require=EXTRAS_REQUIRE,
         classifiers=[
             'Programming Language :: Python :: 3',
             'License :: OSI Approved :: MIT License',
