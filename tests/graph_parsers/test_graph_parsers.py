@@ -30,6 +30,7 @@ class TestDotParser:
 
         desired_node_names = [
             '__main__', '<module>', 'main', 'foo', 'bar', 'buzz', 'my_print',
+            'my_print (0)', 'my_print (1)',
         ]
         desired_node_links = [
             ('__main__', '<module>'),
@@ -44,7 +45,7 @@ class TestDotParser:
 
         node_names = [v.snippet.name for v in node_collection]
         node_links = [
-            (link.root.snippet.name, link.leaf.snippet.name)
+            (link.root.snippet.name, link.leaf.snippet.name.split(' ')[0])
             for link in node_collection.resolve_links()
         ]
 
