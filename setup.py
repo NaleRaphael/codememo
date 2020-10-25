@@ -17,6 +17,7 @@ THIS_DIR = Path(__file__).parent
 EXTRAS_REQUIRE = {
     'dot': ['pygraphviz>=1.6', 'networkx>=2.5'],
 }
+EXTRAS_REQUIRE['full'] = list(set([v for req_list in EXTRAS_REQUIRE.values() for v in req_list]))
 
 def get_version(fn_version_setting):
     version = open(fn_version_setting, 'r').read().strip()

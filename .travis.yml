@@ -22,7 +22,7 @@ before_install:
   - sudo apt-get install graphviz
 
 install:
-  - pip install ./
+  - pip install .[full]
   - pip install -r requirements_test.txt
 
 script:
