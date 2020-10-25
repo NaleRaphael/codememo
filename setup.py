@@ -15,7 +15,7 @@ from setuptools import setup, find_packages
 THIS_DIR = Path(__file__).parent
 
 EXTRAS_REQUIRE = {
-    'dot': ['pygraphviz', 'networkx'],
+    'dot': ['pygraphviz>=1.6', 'networkx>=2.5'],
 }
 
 def get_version(fn_version_setting):
