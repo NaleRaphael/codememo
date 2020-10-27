@@ -16,8 +16,9 @@ from setuptools import setup, find_packages
 # Method `site.getsitepackages()` won't work with `virtualenv`, see also:
 # https://github.com/pypa/virtualenv/issues/737
 if not hasattr(site, 'getsitepackages'):
-    from distutils.sysconfig import get_python_lib
-    getsitepackages = get_python_lib
+    def getsitepackages():
+        import pip
+        return [str(Path(pip.__path__).parent.absolute())]
 else:
     getsitepackages = site.getsitepackages
 
