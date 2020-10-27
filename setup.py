@@ -13,6 +13,13 @@ import subprocess as sp
 from pathlib import Path
 from setuptools import setup, find_packages
 
+# Method `site.getsitepackages()` won't work with `virtualenv`, see also:
+# https://github.com/pypa/virtualenv/issues/737
+if not hasattr(site, 'getsitepackages'):
+    from distutils.sysconfig import get_python_lib
+    getsitepackages = get_python_lib
+else:
+    getsitepackages = site.getsitepackages
 
 THIS_DIR = Path(__file__).parent
 
@@ -23,6 +30,7 @@ EXTRAS_REQUIRE = {
 if sys.platform == 'linux':
     EXTRAS_REQUIRE['dot'].append('pygraphviz>=1.6')
 EXTRAS_REQUIRE['full'] = list(set([v for req_list in EXTRAS_REQUIRE.values() for v in req_list]))
+
 
 def get_version(fn_version_setting):
     version = open(fn_version_setting, 'r').read().strip()
@@ -112,7 +120,7 @@ def prepare_data_files():
             path_map[rel_parent].append(rel_path)
 
     # Prefix keys in `path_map` with "lib/site-packages" (depends on OS)
-    prefix = Path(site.getsitepackages()[0]).relative_to(sys.prefix)
+    prefix = Path(getsitepackages()[0]).relative_to(sys.prefix)
     path_map = {str(prefix.joinpath(k)): v for k, v in path_map.items()}
 
     # Convert `Path` object to str
