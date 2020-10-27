@@ -657,10 +657,12 @@ NODE_WINDOW_PADDING = Vec2(8.0, 8.0)
 NODE_MAX_NAME_LEGNTH = 8    # number of characters
 
 class CodeNodeComponent(ImguiComponent):
-    def __init__(self, _id, pos, node, **kwargs):
+    def __init__(self, app, _id, pos, node, **kwargs):
         """
         Parameters
         ----------
+        app : codememo.Application
+            Reference of running application.
         _id : int
             ID of this node.
         pos : Vec2
@@ -680,6 +682,10 @@ class CodeNodeComponent(ImguiComponent):
             'tab_to_spaces_number': kwargs.pop('tab_to_spaces_number', 4),
         }
 
+        self._max_name_length = getattr(
+            app.config.viewer, 'node_max_name_length', NODE_MAX_NAME_LEGNTH
+        )
+
         self.container = None
         self.is_showing_context_menu = False
         self.confirmation_modal = False
@@ -691,8 +697,8 @@ class CodeNodeComponent(ImguiComponent):
     @property
     def display_name(self):
         """Name of node to display on canvas."""
-        if len(self.name) > NODE_MAX_NAME_LEGNTH:
-            return f'{self.name[:NODE_MAX_NAME_LEGNTH - 3]}...'
+        if len(self.name) > self._max_name_length:
+            return f'{self.name[:self._max_name_length - 3]}...'
         else:
             return self.name
 
@@ -742,7 +748,7 @@ class CodeNodeComponent(ImguiComponent):
         # Display CodeSnippetWindow
         if imgui.is_item_hovered():
             # Show full name in tooltip if length of name is too long
-            if len(self.name) > NODE_MAX_NAME_LEGNTH:
+            if len(self.name) > self._max_name_length:
                 imgui.set_tooltip(self.name)
 
             # Open CodeSnippetWindow when double-clicked or ALT + click
@@ -1004,15 +1010,13 @@ class CodeNodeCreatorWindow(ImguiComponent):
         imgui.end()
 
 
-LAYOUT_NODE_OFFSET_X = 80
-LAYOUT_NODE_OFFSET_Y = 80
-
 class CodeNodeViewer(ImguiComponent):
     """ A viewer for CodeNodeComponent.
     reference: https://gist.github.com/ocornut/7e9b3ec566a333d725d4
     """
     DEFAULT_NODE_LIST_WIDTH = 100.0
     SEARCH_TEXT_MAX_LENGTH = 128
+    DEFAULT_NODE_OFFSET_Y = 80
 
     def __init__(self, app, node_collection, fn_src=None):
         """
@@ -1057,6 +1061,15 @@ class CodeNodeViewer(ImguiComponent):
         self._canvas_screen_pos = Vec2(0.0, 0.0)
         # Size of canvas. This should be updated while drawing canvas.
         self._canvas_size = Vec2(0.0, 0.0)
+
+        # Settings for layout of nodes
+        max_name_length = getattr(
+            self.app.config.viewer, 'node_max_name_length', NODE_MAX_NAME_LEGNTH
+        )
+        self._layout_node_offset_x = max_name_length * CODE_CHAR_WIDTH + 2 * NODE_WINDOW_PADDING.x
+        self._layout_node_offset_y = getattr(
+            self.app.config.viewer, 'layout_node_offset_y', self.DEFAULT_NODE_OFFSET_Y
+        )
 
         # --- Flags for view control
         # Show grid
@@ -1133,7 +1146,7 @@ class CodeNodeViewer(ImguiComponent):
 
         # Calculate position according to tree
         positions = []
-        ux, uy = LAYOUT_NODE_OFFSET_X, LAYOUT_NODE_OFFSET_Y
+        ux, uy = self._layout_node_offset_x, self._layout_node_offset_y
         x_offset = ux if len(orphans) != 0 else 0
         y_offset = 0
         tree_widths = [max([len(layer) for layer in tree]) for tree in trees]
@@ -1159,7 +1172,7 @@ class CodeNodeViewer(ImguiComponent):
                 'tab_to_spaces_number': self.app.config.text_input.tab_to_spaces_number,
             }
             self.node_components = [
-                CodeNodeComponent(i, positions[i], v, **init_kwargs)
+                CodeNodeComponent(self.app, i, positions[i], v, **init_kwargs)
                 for i, v in enumerate(nodes)
             ]
             # Set container (viewer) for nodes
@@ -1220,7 +1233,7 @@ class CodeNodeViewer(ImguiComponent):
         index = self._id_auto_increment
         self._id_auto_increment += 1
 
-        component = CodeNodeComponent(index, node_pos, node, **init_kwargs)
+        component = CodeNodeComponent(self.app, index, node_pos, node, **init_kwargs)
         component.set_container(self)
         self.node_components.append(component)
 

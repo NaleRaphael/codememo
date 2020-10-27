@@ -72,6 +72,9 @@ class AppConfig(ConfigBase):
         self.text_input = TextInputConfig(
             **kwargs.pop(TextInputConfig.name, {})
         )
+        self.viewer = ViewerConfig(
+            **kwargs.pop(ViewerConfig.name, {})
+        )
         self._check_remaining_kwargs(**kwargs)
 
     @classmethod
@@ -99,6 +102,7 @@ class AppConfig(ConfigBase):
     def to_dict(self):
         return {
             self.text_input.name: self.text_input.to_dict(),
+            self.viewer.name: self.viewer.to_dict(),
         }
 
 
@@ -139,6 +143,22 @@ class TextInputConfig(ConfigBase):
         super(TextInputConfig, self).__init__()
         for k in self.keys:
             setattr(self, k, kwargs.pop(k, getattr(TextInputDefaults, k)))
+        self._check_remaining_kwargs(**kwargs)
+
+
+class ViewerDefaults(Defaults):
+    node_max_name_length = 8
+    layout_node_offset_y = 80
+
+
+class ViewerConfig(ConfigBase):
+    name = 'viewer'
+    keys = ['node_max_name_length', 'layout_node_offset_y']
+
+    def __init__(self, **kwargs):
+        super(ViewerConfig, self).__init__()
+        for k in self.keys:
+            setattr(self, k, kwargs.pop(k, getattr(ViewerDefaults, k)))
         self._check_remaining_kwargs(**kwargs)
 
 
