@@ -1809,20 +1809,22 @@ class OpenFileDialog(ImguiComponent):
         imgui.text('Filename')
         imgui.push_item_width(-1)
         changed, text = imgui.input_text(
-            '##filename', self.filename, self.INPUT_FILENAME_MAX_LENGTH
+            '##filename', self.filename, self.INPUT_FILENAME_MAX_LENGTH,
+            flags=imgui.INPUT_TEXT_ENTER_RETURNS_TRUE
         )
         imgui.pop_item_width()
         if changed:
+            imgui.set_keyboard_focus_here()
             self.filename = text
 
         imgui.text(self.error_msg)
         win_width = imgui.get_window_content_region_width()
         imgui.same_line(win_width - 28)
 
-        if imgui.button('Open'):
+        if imgui.button('Open') or changed:
             fn = Path(self.filename)
             try:
-                # Use this to check whehter there are illegal characters in name
+                # Use this to check whether there are illegal characters in name
                 is_valid = not fn.is_dir()
             except OSError:
                 is_valid = False
