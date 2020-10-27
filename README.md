@@ -41,20 +41,23 @@ Currently, DOT file for call graph is supported. You can install these dependenc
     $ git clone https://github.com/naleraphael/codememo
     $ cd codememo
 
-    # (recommended) install with patch
-    $ pip install -v --global-option="--use-forked-pyimgui" ./
-    # ... or install without patch
-    # $ pip install ./
+    # (recommended) install with forked version of `pyimgui`
+    $ pip install ./
+    # ... or install with orignal version of `pyimgui`
+    # $ pip install -v --global-option="--use-original-pyimgui" ./
     ```
 
-- (Extras) support for importing from call graphs
+- (Extras) support for creating projects from call graphs
     ```bash
-    $ pip install -v --global-option="--use-forked-pyimgui" .[dot]
+    $ pip install .[dot]
 
     # if you are using zsh, you have to escape square brackets
-    # $ pip install -v --global-option="--use-forked-pyimgui" .\[dot\]
+    # $ pip install .\[dot\]
     ```
 
+    For linux users, `libgraphviz-dev` is required before installing `pygraphviz`. You might need to install it by `$ sudo apt-get install libgraphviz-dev`.
+
+    For non-linux users, `pygraphviz` have to be installed manually since it has to be built with source of `graphviz`. If you don't want to be bothered by those complicated settings, you can simply install it through a forked version provided by Alex Lubbock on Anaconda: `$ conda install pygraphviz -c alubbock`. See also [this comment](https://github.com/pygraphviz/pygraphviz/issues/186#issuecomment-481760487) for further details.
 
 ## Usage
 - Launch GUI
