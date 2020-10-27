@@ -121,7 +121,6 @@ def prepare_data_files():
             path_map[rel_parent].append(rel_path)
 
     # Prefix keys in `path_map` with "lib/site-packages" (depends on OS)
-    print(Path(getsitepackages()[0]).absolute())
     prefix = Path(getsitepackages()[0]).relative_to(sys.prefix)
     path_map = {str(prefix.joinpath(k)): v for k, v in path_map.items()}
 
