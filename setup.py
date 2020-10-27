@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 if not hasattr(site, 'getsitepackages'):
     def getsitepackages():
         import pip
-        return [str(Path(pip.__path__).parent.absolute())]
+        return [str(Path(pip.__path__[0]).absolute())]
 else:
     getsitepackages = site.getsitepackages
 
