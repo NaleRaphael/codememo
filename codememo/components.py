@@ -1,4 +1,4 @@
-import time, re
+import time, re, math
 from pathlib import Path
 
 from .vendor import imgui
@@ -1456,6 +1456,10 @@ class CodeNodeViewer(ImguiComponent):
 
         nodes = [v.node for v in self.node_components]
 
+        # Since angles of arrows are fixed, here we just hard-coded these values
+        # in order to reduce calculation
+        cos30d, sin30d = 0.8660254037844387, 0.5
+
         for link in self.links:
             node_leaf = self.node_components[nodes.index(link.leaf)]
             node_root = self.node_components[nodes.index(link.root)]
@@ -1465,6 +1469,17 @@ class CodeNodeViewer(ImguiComponent):
             slot_color = imgui.get_color_u32_rgba(0.75, 0.75, 0.75, 1)
             draw_list.add_circle_filled(*p1, 4.0, slot_color)
             draw_list.add_circle_filled(*p2, 4.0, slot_color)
+
+            # Draw arrows
+            vd = p1 - p2
+            d = math.sqrt(vd.x**2 + vd.y**2)
+            vd = vd * (8/d)     # length: 8 pixels
+            p_arrow = [
+                p1,
+                p1 - Vec2(vd.x*cos30d + vd.y*sin30d, -vd.x*sin30d + vd.y*cos30d),
+                p1 - Vec2(vd.x*cos30d - vd.y*sin30d, vd.x*sin30d + vd.y*cos30d),
+            ]
+            draw_list.add_polyline(p_arrow, imgui.get_color_u32_rgba(1, 1, 0, 1), closed=True)
 
     def display_nodes(self, draw_list, offset):
         for node in self.node_components:
