@@ -706,8 +706,9 @@ class CodeNodeComponent(ImguiComponent):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.node.leaves) + 1)
         return Vec2(self.pos.x + self.size.x, y)
 
-    def get_root_slot_pos(self):
-        return Vec2(self.pos.x, self.pos.y + self.size.y / 2.)
+    def get_root_slot_pos(self, slot_no):
+        y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.node.roots) + 1)
+        return Vec2(self.pos.x, y)
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -792,7 +793,7 @@ class CodeNodeComponent(ImguiComponent):
 
         self.is_showing_context_menu = imgui.begin_popup_context_item('node-context-menu', 2)
         if self.is_showing_context_menu:
-            if self.node.root is not None and imgui.selectable('Remove root reference')[0]:
+            if len(self.node.roots) != 0 and imgui.selectable('Remove root reference')[0]:
                 # Can be used to reset reference_info when snippet are modified
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
@@ -1201,27 +1202,6 @@ class CodeNodeViewer(ImguiComponent):
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
 
-    def check_node_can_be_added_as_reference(self, node_component):
-        if node_component.id == self.id_selected:
-            # Selected node itself can't be its own leaf reference
-            return False
-        # TODO: rewrite this with a better approach
-        is_selecting_leaf_node = 'event__add_reference' in self.state_cache
-        if not is_selecting_leaf_node:
-            return False
-
-        target = node_component.node
-        if target.root is not None:
-            return False
-
-        root_node = self.state_cache['event__add_reference'].get('root_node')
-        temp_root = root_node.root
-        while temp_root is not None:
-            if target is temp_root:
-                return False
-            temp_root = temp_root.root
-        return True
-
     def create_node_component(self, node, node_pos=None):
         self.node_collection.nodes.append(node)
 
@@ -1409,22 +1389,23 @@ class CodeNodeViewer(ImguiComponent):
             return
         ids = [v.id for v in self.node_components]
         selected = self.node_components[ids.index(self.id_selected)]
-        root_node = selected.node.root
-        if root_node is None:
+        if len(selected.node.roots) == 0:
             return
         nodes = [v.node for v in self.node_components]
-        idx = nodes.index(root_node)
-        if self.node_components[idx].snippet_window is not None:
-            self.node_components[idx].snippet_window.reference_info = None
+        for root in selected.node.roots:
+            idx = nodes.index(root)
+            if self.node_components[idx].snippet_window is not None:
+                self.node_components[idx].snippet_window.reference_info = None
 
     def highlight_referenced_lines_in_snippet(self, node_component):
-        root_node = node_component.node.root
-        if root_node is None:
+        if len(node_component.node.roots) == 0:
             return
         nodes = [v.node for v in self.node_components]
-        idx = nodes.index(root_node)
-        if self.node_components[idx].snippet_window is not None:
-            self.node_components[idx].snippet_window.reference_info = node_component.node.ref_info
+        for root in node_component.node.roots:
+            idx = nodes.index(root)
+            if self.node_components[idx].snippet_window is not None:
+                ref_info = node_component.node.ref_infos[root.uuid]
+                self.node_components[idx].snippet_window.reference_info = ref_info
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
@@ -1463,7 +1444,7 @@ class CodeNodeViewer(ImguiComponent):
         for link in self.links:
             node_leaf = self.node_components[nodes.index(link.leaf)]
             node_root = self.node_components[nodes.index(link.root)]
-            p1 = offset + node_leaf.get_root_slot_pos()
+            p1 = offset + node_leaf.get_root_slot_pos(link.root_slot)
             p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
             draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
             slot_color = imgui.get_color_u32_rgba(0.75, 0.75, 0.75, 1)

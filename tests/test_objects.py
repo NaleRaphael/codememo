@@ -5,6 +5,9 @@ import pytest
 from codememo.objects import (
     Snippet, Node, NodeLink, NodeIndexLink, NodeCollection
 )
+from codememo.exceptions import (
+    NodeRemovalException, NodeReferenceException,
+)
 
 
 @pytest.fixture
@@ -34,9 +37,9 @@ def dummy_node_data():
         'uuid': '554baf0e-b43a-4a52-a384-161e1f196320',
         'snippet': snippet_data,
         'comment': 'just some comment...',
-        'root': None,
+        'roots': [],
         'leaves': [],
-        'ref_info': None,
+        'ref_infos': {},
     }
     return node_data
 
@@ -122,20 +125,21 @@ class TestNode:
 
     def test__add_leaf__self_reference(self, dummy_nodes):
         A = dummy_nodes[0]
-        with pytest.raises(ValueError, match='Self reference'):
-            A.add_leaf(A)
+        A.add_leaf(A)
+        assert A in A.roots
 
-    def test__add_leaf__circular_reference(self, dummy_nodes):
-        A, B = dummy_nodes[0], dummy_nodes[1]
-        A.add_leaf(B)
-        with pytest.raises(ValueError, match='Circular reference'):
-            B.add_leaf(A)
+    def test__add_leaf__self_reference_duplicate(self, dummy_nodes):
+        A = dummy_nodes[0]
+        A.add_leaf(A)
+        with pytest.raises(NodeReferenceException, match='Duplicate reference'):
+            A.add_leaf(A)
 
     def test__add_leaf__multiple_root(self, dummy_nodes):
         A, B, C = dummy_nodes[0], dummy_nodes[1], dummy_nodes[2]
         A.add_leaf(B)
-        with pytest.raises(ValueError, match='Multiple root'):
-            C.add_leaf(B)
+        C.add_leaf(B)
+        assert A in B.roots
+        assert C in B.roots
 
     def test__add_leaf__exceed_range(self, dummy_nodes):
         A, B = dummy_nodes[0], dummy_nodes[1]

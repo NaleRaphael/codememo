@@ -11,12 +11,12 @@
         "url": ""
       },
       "comment": "",
-      "root": null,
+      "roots": [],
       "leaves": [
         "6921e152-78f7-40ac-9207-8fc73a1c9b26",
         "0d315dd4-4500-4734-805d-779fe10a6d5e"
       ],
-      "ref_info": null
+      "ref_infos": {}
     },
     {
       "uuid": "6921e152-78f7-40ac-9207-8fc73a1c9b26",
@@ -29,11 +29,13 @@
         "url": ""
       },
       "comment": "",
-      "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
+      "roots": ["d741530a-8f76-4f6c-933a-a76fefab907f"],
       "leaves": [],
-      "ref_info": {
-        "ref_start": 2,
-        "ref_stop": null
+      "ref_infos": {
+        "d741530a-8f76-4f6c-933a-a76fefab907f": {
+          "ref_start": 2,
+          "ref_stop": []
+        }
       }
     },
     {
@@ -47,11 +49,13 @@
         "url": ""
       },
       "comment": "",
-      "root": "d741530a-8f76-4f6c-933a-a76fefab907f",
+      "roots": ["d741530a-8f76-4f6c-933a-a76fefab907f"],
       "leaves": [],
-      "ref_info": {
-        "ref_start": 3,
-        "ref_stop": null
+      "ref_infos": {
+        "d741530a-8f76-4f6c-933a-a76fefab907f": {
+          "ref_start": 3,
+          "ref_stop": null
+        }
       }
     }
   ]
