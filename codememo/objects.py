@@ -266,7 +266,7 @@ class Node(object):
             Index of leaf node to be removed.
         """
         node = self.leaves.pop(idx)
-        node.reset_root()
+        node.reset_root(self)
 
 
 class NodeLink(object):
@@ -524,27 +524,41 @@ class NodeCollection(object):
                     layers[idx_current_layer].append(element)
             return layers
 
-        # Find roots and orphans
-        roots = []
-        orphans = []
-        for node in self.nodes:
-            if len(node.roots) == 0:
-                if len(node.leaves) == 0:
-                    orphans.append(node)
-                else:
-                    roots.append(node)
+        def find_roots_and_orphans(nodes, visited):
+            roots, orphans = [], []
+            remainings = set(nodes).difference(visited)
+            for node in remainings:
+                if len(node.roots) == 0:
+                    if len(node.leaves) == 0:
+                        orphans.append(node)
+                    else:
+                        roots.append(node)
+
+            # All nodes are chaining and forming a single circular reference loop,
+            # so that we cannot find a global root node from the loop above. Here
+            # we just pick a node as root.
+            if len(roots) == 0 and len(remainings) != 0:
+                for node in remainings:
+                    if node not in orphans:
+                        roots.append(node)
+                        break
+            return roots, orphans
+
         # Build trees
-        trees = []
-        visited = set()
-        for root in roots:
-            trees.append(build_tree(root, [], visited))
+        trees, orphan_nodes, visited = [], [], set()
+        while len(visited) != len(self.nodes):
+            roots, orphans = find_roots_and_orphans(self.nodes, visited)
+            visited.update(orphans)
+            orphan_nodes.extend(orphans)
+            for root in roots:
+                trees.append(build_tree(root, [], visited))
 
         # Resolve layers starting from roots
         layer_collection = []
         for tree in trees:
             layer_collection.append(build_layers(tree, [], 0))
 
-        return layer_collection, orphans
+        return layer_collection, orphan_nodes
 
     @classmethod
     def from_dict(cls, data):
