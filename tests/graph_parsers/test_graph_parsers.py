@@ -30,7 +30,6 @@ class TestDotParser:
 
         desired_node_names = [
             '__main__', '<module>', 'main', 'foo', 'bar', 'buzz', 'my_print',
-            'my_print (0)', 'my_print (1)',
         ]
         desired_node_links = [
             ('__main__', '<module>'),
