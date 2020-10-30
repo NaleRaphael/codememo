@@ -249,11 +249,27 @@ class TestNodeCollection:
     def test__resolve_tree__multiple_trees(self, dummy_nodes_multiple_trees):
         nodes = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
-        layer_collection, orphans = node_collection.resolve_tree()
+        trees, orphans = node_collection.resolve_tree()
         desired_trees = [
             [[nodes[0]], [nodes[1], nodes[2]], [nodes[3]]],
             [[nodes[5]], [nodes[6]], [nodes[7], nodes[8]], [nodes[9]]],
         ]
-        assert len(layer_collection) == len(desired_trees)
+        assert len(trees) == len(desired_trees)
         assert orphans == [nodes[4]]
-        assert all([tree in desired_trees for tree in layer_collection])
+        assert all([tree in desired_trees for tree in trees])
+
+    def test__resolve_tree__circular_references(self, dummy_nodes_circular_references):
+        nodes = dummy_nodes_circular_references
+        node_collection = NodeCollection(nodes)
+        trees, orphans = node_collection.resolve_tree()
+        desired_trees = [
+            [[nodes[1]], [nodes[2]], [nodes[3]]],
+            [[nodes[4]], [nodes[5]], [nodes[6]]],
+        ]
+        assert len(trees) == len(desired_trees)
+        assert orphans == [nodes[0]]
+
+        # Order of built tree from circular reference loop is not guaranteed
+        # to be the same as desired tree.
+        for tree in trees:
+            assert all([len(layer) == 1 for layer in tree])

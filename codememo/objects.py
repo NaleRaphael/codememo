@@ -484,7 +484,9 @@ class NodeCollection(object):
                 if leaf is node:
                     subtrees.append([])
                 else:
-                    subtrees.append(build_tree(leaf, [], visited))
+                    new_tree = build_tree(leaf, [], visited)
+                    if len(new_tree) != 0:
+                        subtrees.append(new_tree)
 
             if len(subtrees) == 0:
                 return tree
