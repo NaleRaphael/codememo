@@ -314,6 +314,42 @@ class TestNodeCollection:
         assert len(links) == len(desired_links)
         assert all([v in desired_links for v in links])
 
+    def test__resolve_index_link_from_trees__multiple_trees(self, dummy_nodes_multiple_trees):
+        nodes, desired_links, _ = dummy_nodes_multiple_trees
+        node_collection = NodeCollection(nodes)
+        trees, orphans = node_collection.resolve_tree()
+        links = node_collection.resolve_index_links_from_trees(trees)
+
+        # Index link is based on element indices in trees rather than indices in
+        # `NodeCollection.nodes`, so that we cannot validate these index links
+        # with those preset answer from fixture `dummy_nodes_multiple_trees`.
+        # Here we use uuid pairs to validate it instead.
+        desired_uuid_pairs = [(link.root.uuid, link.leaf.uuid) for link in desired_links]
+
+        uuid_pairs = []
+        flatten_trees = [node for tree in trees for layer in tree for node in layer]
+        for link in links:
+            root, leaf = flatten_trees[link.root_idx], flatten_trees[link.leaf_idx]
+            uuid_pairs.append((root.uuid, leaf.uuid))
+        assert set(uuid_pairs) == set(desired_uuid_pairs)
+
+    def test__resolve_index_link_from_trees__circular_references(
+        self, dummy_nodes_circular_references
+    ):
+        nodes, desired_links, _ = dummy_nodes_circular_references
+        node_collection = NodeCollection(nodes)
+        trees, orphans = node_collection.resolve_tree()
+        links = node_collection.resolve_index_links_from_trees(trees)
+
+        desired_uuid_pairs = [(link.root.uuid, link.leaf.uuid) for link in desired_links]
+
+        flatten_trees = [node for tree in trees for layer in tree for node in layer]
+        uuid_pairs = []
+        for link in links:
+            root, leaf = flatten_trees[link.root_idx], flatten_trees[link.leaf_idx]
+            uuid_pairs.append((root.uuid, leaf.uuid))
+        assert set(uuid_pairs) == set(desired_uuid_pairs)
+
     def test__resolve_index_link__multiple_trees(self, dummy_nodes_multiple_trees):
         nodes, _, desired_index_links = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
