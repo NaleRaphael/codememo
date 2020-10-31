@@ -80,6 +80,7 @@ def write_requirements():
 
     with open('./requirements.txt', 'w') as f:
         f.writelines('\n'.join(reqs))
+        f.writelines('\n')
 
 
 def get_requirements():

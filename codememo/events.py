@@ -1,4 +1,4 @@
-from .interanl import Singleton
+from .internal import Singleton
 
 __all__ = ['NodeEvent', 'NodeEventRegistry']
 

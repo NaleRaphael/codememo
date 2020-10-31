@@ -14,7 +14,7 @@ except ImportError as ex_use_forked_pyimgui:
 
     import warnings
     msg = (
-        '"setting.py" are not available, fallback to use original '
+        '"settings.py" are not available, fallback to use original '
         'version of `pyimgui`.'
     )
     warnings.warn(msg, UserWarning)

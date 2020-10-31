@@ -11,7 +11,7 @@ from .objects import (
     NodeCollection,
 )
 from .events import NodeEvent, NodeEventRegistry
-from .interanl import GlobalState
+from .internal import GlobalState
 
 CODE_CHAR_WIDTH = 8
 CODE_CHAR_HEIGHT = 14

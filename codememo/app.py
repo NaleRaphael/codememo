@@ -11,7 +11,7 @@ from .components import (
     ErrorMessageModal,
 )
 from .config import AppConfig, AppHistory
-from .interanl import GlobalState
+from .internal import GlobalState
 from .shortcuts import ShortcutRegistry, PygletIOWrapper
 
 # There is an issue of managing state of keys in `imgui._IO`, so that we used

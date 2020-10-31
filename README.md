@@ -27,7 +27,7 @@ It requires to install `Cython` in order to re-compile `pyimgui`. But you don't 
 - `pygraphviz >= 1.6`
 - `networkx >= 2.5`
 
-Currently, DOT file for call graph is supported. You can install these dependencies with syntax `$ pip install THIS_PACAKGE[dot]`, see also [instructions for installtion](#Installation). But note that:
+Currently, DOT file for call graph is supported. You can install these dependencies with syntax `$ pip install THIS_PACAKGE[dot]`, see also [instructions for installation](#Installation). But note that:
 - Content (code snippet) won't be available since call graph is
   targeted to represent relations between functions.
 - Since our implementaion of node is a single-root node structure,
@@ -43,7 +43,7 @@ Currently, DOT file for call graph is supported. You can install these dependenc
 
     # (recommended) install with forked version of `pyimgui`
     $ pip install ./
-    # ... or install with orignal version of `pyimgui`
+    # ... or install with original version of `pyimgui`
     # $ pip install -v --global-option="--use-original-pyimgui" ./
     ```
 
