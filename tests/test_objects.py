@@ -299,8 +299,8 @@ class TestNodeCollection:
     def test__resolve_link_from_trees__multiple_trees(self, dummy_nodes_multiple_trees):
         nodes, desired_links, _ = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
-        tree, orphans = node_collection.resolve_tree()
-        links = node_collection.resolve_links_from_trees(tree)
+        trees, orphans = node_collection.resolve_trees()
+        links = node_collection.resolve_links_from_trees(trees)
         assert len(links) == len(desired_links)
         assert all([v in desired_links for v in links])
 
@@ -309,15 +309,15 @@ class TestNodeCollection:
     ):
         nodes, desired_links, _ = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
-        tree, orphans = node_collection.resolve_tree()
-        links = node_collection.resolve_links_from_trees(tree)
+        trees, orphans = node_collection.resolve_trees()
+        links = node_collection.resolve_links_from_trees(trees)
         assert len(links) == len(desired_links)
         assert all([v in desired_links for v in links])
 
     def test__resolve_index_link_from_trees__multiple_trees(self, dummy_nodes_multiple_trees):
         nodes, desired_links, _ = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
-        trees, orphans = node_collection.resolve_tree()
+        trees, orphans = node_collection.resolve_trees()
         links = node_collection.resolve_index_links_from_trees(trees)
 
         # Index link is based on element indices in trees rather than indices in
@@ -338,7 +338,7 @@ class TestNodeCollection:
     ):
         nodes, desired_links, _ = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
-        trees, orphans = node_collection.resolve_tree()
+        trees, orphans = node_collection.resolve_trees()
         links = node_collection.resolve_index_links_from_trees(trees)
 
         desired_uuid_pairs = [(link.root.uuid, link.leaf.uuid) for link in desired_links]
@@ -366,10 +366,10 @@ class TestNodeCollection:
         assert len(links) == len(desired_index_links)
         assert all([v in desired_index_links for v in links])
 
-    def test__resolve_tree__multiple_trees(self, dummy_nodes_multiple_trees):
+    def test__resolve_trees__multiple_trees(self, dummy_nodes_multiple_trees):
         nodes, *_ = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
-        trees, orphans = node_collection.resolve_tree()
+        trees, orphans = node_collection.resolve_trees()
         desired_trees = [
             [[nodes[0]], [nodes[1], nodes[2]], [nodes[3]]],
             [[nodes[5]], [nodes[6]], [nodes[7], nodes[8]], [nodes[9]]],
@@ -378,10 +378,10 @@ class TestNodeCollection:
         assert orphans == [nodes[4]]
         assert all([tree in desired_trees for tree in trees])
 
-    def test__resolve_tree__circular_references(self, dummy_nodes_circular_references):
+    def test__resolve_trees__circular_references(self, dummy_nodes_circular_references):
         nodes, *_ = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
-        trees, orphans = node_collection.resolve_tree()
+        trees, orphans = node_collection.resolve_trees()
         desired_trees = [
             [[nodes[1]], [nodes[2]], [nodes[3]]],
             [[nodes[4]], [nodes[5]], [nodes[6]]],

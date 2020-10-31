@@ -1177,7 +1177,7 @@ class CodeNodeViewer(ImguiComponent):
             GlobalState().push_error(ex)
 
     def init_nodes_and_links(self):
-        trees, orphans = self.node_collection.resolve_tree()
+        trees, orphans = self.node_collection.resolve_trees()
         self.links = self.node_collection.resolve_links_from_trees(trees)
 
         # Calculate position according to tree
