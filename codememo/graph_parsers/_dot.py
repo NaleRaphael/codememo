@@ -51,30 +51,9 @@ class DotParser(BaseParser):
         nodes = [Node(Snippet(raw_node['id'], '')) for raw_node in raw_nodes]
         node_index_map = {raw_node['id']: i for i, raw_node in enumerate(raw_nodes)}
 
-        multi_root_counter = {}
-
         for raw_link in raw_links:
             idx_src, idx_tgt = node_index_map[raw_link['source']], node_index_map[raw_link['target']]
             src, tgt = nodes[idx_src], nodes[idx_tgt]
-
-            # build as a single-root node
-            if tgt.root is not None:
-                if src is tgt:
-                    # deal with recursive function call
-                    name = f'{tgt.snippet.name} (recursive)'
-                else:
-                    # deal with multi-root node
-                    if tgt.snippet.name in multi_root_counter:
-                        serial_num = multi_root_counter[tgt.snippet.name]
-                        multi_root_counter[tgt.snippet.name] += 1
-                    else:
-                        serial_num = 0
-                        multi_root_counter[tgt.snippet.name] = 1
-                    name = f'{tgt.snippet.name} ({serial_num})'
-
-                tgt = Node(Snippet(name, ''))
-                nodes.append(tgt)
-
             src.add_leaf(tgt)
 
         return NodeCollection(nodes)

@@ -657,6 +657,14 @@ NODE_WINDOW_PADDING = Vec2(8.0, 8.0)
 NODE_MAX_NAME_LEGNTH = 8    # number of characters
 
 class CodeNodeComponent(ImguiComponent):
+    VALID_INTERACTIONS = ['add_reference', 'remove_root_reference']
+    INTERACTION_EVENT_NAME_MAP = {v: f'event__{v}' for v in VALID_INTERACTIONS}
+    NODE_FG_COLOR_MAP = {
+        'add_reference': (0.2, 0.8, 0.4, 1),
+        'remove_root_reference': (1, 0, 0, 1),
+        '': (0.5, 0.5, 0.5, 1),
+    }
+
     def __init__(self, app, _id, pos, node, **kwargs):
         """
         Parameters
@@ -706,8 +714,9 @@ class CodeNodeComponent(ImguiComponent):
         y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.node.leaves) + 1)
         return Vec2(self.pos.x + self.size.x, y)
 
-    def get_root_slot_pos(self):
-        return Vec2(self.pos.x, self.pos.y + self.size.y / 2.)
+    def get_root_slot_pos(self, slot_no):
+        y = self.pos.y + self.size.y * (slot_no + 1) / (len(self.node.roots) + 1)
+        return Vec2(self.pos.x, y)
 
     def set_container(self, container):
         if not isinstance(container, CodeNodeViewer):
@@ -720,6 +729,41 @@ class CodeNodeComponent(ImguiComponent):
         )
         self.snippet_window.window_opened = True
         imgui.set_next_window_focus()
+
+    def process_interaction(self):
+        interaction_name = ''
+        for name, event_name in self.INTERACTION_EVENT_NAME_MAP.items():
+            if event_name in self.container.state_cache:
+                interaction_name = name
+                break       # process one interaction at a time
+
+        if interaction_name != '':
+            is_item_clicked = imgui.is_item_clicked()
+            event_name = self.INTERACTION_EVENT_NAME_MAP[interaction_name]
+            event = self.container.state_cache[event_name]
+
+            if interaction_name == 'add_reference' and is_item_clicked:
+                root = event.get('root_node')
+                kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
+                self.container.add_leaf_reference(root, self.node, **kwargs)
+
+            if interaction_name == 'remove_root_reference':
+                target = event.get('target')
+                if self.node not in target.roots:
+                    # reset this variable because this node is not a valid object
+                    # for interaction
+                    interaction_name = ''
+                elif is_item_clicked:
+                    self.handle_event__remove_root_reference(target, self.node)
+
+        return interaction_name
+
+    def handle_event__remove_root_reference(self, target, root):
+        self.confirmation_modal = ConfirmationModal(
+            'Confirm',
+            'Are you sure you want to remove root reference of this node?',
+            callback_yes=lambda: self.container.remove_root_reference(target, root),
+        )
 
     def render(self, draw_list, offset):
         assert isinstance(self.container, CodeNodeViewer), (
@@ -764,41 +808,29 @@ class CodeNodeComponent(ImguiComponent):
                 # Window has been closed, so we remove this reference.
                 self.snippet_window = None
 
-        # Handle event of adding reference node
-        can_be_added_as_reference = False
-        if self.container.state_cache:
-            # NOTE: update this boolean only when we are selecting nodes for
-            # reference, this can reduce resource waste.
-            can_be_added_as_reference = self.container.check_node_can_be_added_as_reference(self)
-            if imgui.is_item_clicked():
-                event = self.container.state_cache['event__add_reference']
-                root = event.get('root_node')
-                kwargs = {k: event.get(k) for k in ['ref_start', 'ref_stop']}
-                self.container.add_leaf_reference(root, self.node, **kwargs)
+        interaction_name = self.process_interaction()
 
         # TODO: for context menu
         self.container.handle_active_node(self, old_any_active)
 
-        # NOTE: we cannot predefined colors since renderer should be assigned first.
         node_bg_color = imgui.get_color_u32_rgba(0.7, 0.3, 0.3, 1) if (
             self.container.check_node_activated(self)
         ) else imgui.get_color_u32_rgba(0.25, 0.25, 0.25, 1)
-        node_fg_color = imgui.get_color_u32_rgba(0.2, 0.8, 0.4, 1) if (
-            can_be_added_as_reference
-        ) else imgui.get_color_u32_rgba(0.5, 0.5, 0.5, 1)
+        fg_color_tuple = self.NODE_FG_COLOR_MAP.get(interaction_name, '')
+        node_fg_color = imgui.get_color_u32_rgba(*fg_color_tuple)
 
         draw_list.add_rect_filled(*node_rect_min, *node_rect_max, node_bg_color, 4.0)
         draw_list.add_rect(*node_rect_min, *node_rect_max, node_fg_color, 4.0)
 
         self.is_showing_context_menu = imgui.begin_popup_context_item('node-context-menu', 2)
         if self.is_showing_context_menu:
-            if self.node.root is not None and imgui.selectable('Remove root reference')[0]:
-                # Can be used to reset reference_info when snippet are modified
-                self.confirmation_modal = ConfirmationModal(
-                    'Confirm',
-                    'Are you sure you want to remove root reference of this node?',
-                    callback_yes=lambda: self.container.remove_root_reference(self.node),
-                )
+            if len(self.node.roots) != 0 and imgui.selectable('Remove root reference')[0]:
+                if len(self.node.roots) == 1:
+                    self.handle_event__remove_root_reference(self.node, self.node.roots[0])
+                else:
+                    event_args = dict(target=self.node)
+                    event = NodeEvent(f'remove_root_reference_##{self.container.window_id}', event_args)
+                    self.container.event_registry.dispatch(event)
             if imgui.selectable('Remove node')[0]:
                 self.confirmation_modal = ConfirmationModal(
                     'Confirm',
@@ -1100,6 +1132,10 @@ class CodeNodeViewer(ImguiComponent):
             self.handle_event__add_reference
         )
         self.event_registry.register(
+            f'remove_root_reference_##{self.window_id}',
+            self.handle_event__remove_root_reference
+        )
+        self.event_registry.register(
             f'create_node_##{self.window_id}',
             self.handle_event__create_node
         )
@@ -1133,15 +1169,15 @@ class CodeNodeViewer(ImguiComponent):
         except Exception as ex:
             GlobalState().push_error(ex)
 
-    def remove_root_reference(self, node):
+    def remove_root_reference(self, node, root):
         try:
-            self.node_collection.remove_root_reference(node)
+            self.node_collection.remove_root_reference(node, root)
             self.links = self.node_collection.resolve_links()
         except Exception as ex:
             GlobalState().push_error(ex)
 
     def init_nodes_and_links(self):
-        trees, orphans = self.node_collection.resolve_tree()
+        trees, orphans = self.node_collection.resolve_trees()
         self.links = self.node_collection.resolve_links_from_trees(trees)
 
         # Calculate position according to tree
@@ -1200,27 +1236,6 @@ class CodeNodeViewer(ImguiComponent):
             self.id_hovered_in_scene == node.id or
             (self.id_hovered_in_list == -1 and self.id_selected == node.id)
         )
-
-    def check_node_can_be_added_as_reference(self, node_component):
-        if node_component.id == self.id_selected:
-            # Selected node itself can't be its own leaf reference
-            return False
-        # TODO: rewrite this with a better approach
-        is_selecting_leaf_node = 'event__add_reference' in self.state_cache
-        if not is_selecting_leaf_node:
-            return False
-
-        target = node_component.node
-        if target.root is not None:
-            return False
-
-        root_node = self.state_cache['event__add_reference'].get('root_node')
-        temp_root = root_node.root
-        while temp_root is not None:
-            if target is temp_root:
-                return False
-            temp_root = temp_root.root
-        return True
 
     def create_node_component(self, node, node_pos=None):
         self.node_collection.nodes.append(node)
@@ -1322,11 +1337,14 @@ class CodeNodeViewer(ImguiComponent):
 
     def handle_state(self):
         if self.state_cache:
-            # Remove event and arguments of "add_reference" if this window is
-            # not focused anymore. And that means user can cancel the action
-            # by clicking elsewhere.
+            # Remove event and arguments of event if this window is not focused
+            # anymore. And that means user can cancel the action by clicking
+            # elsewhere.
             if not imgui.is_window_focused():
-                del self.state_cache['event__add_reference']
+                if 'event__add_reference' in self.state_cache:
+                    del self.state_cache['event__add_reference']
+                if 'event__remove_root_reference' in self.state_cache:
+                    del self.state_cache['event__remove_root_reference']
 
     def handle_file_dialog(self):
         if self.file_dialog and self.file_dialog.terminated:
@@ -1399,6 +1417,10 @@ class CodeNodeViewer(ImguiComponent):
         self.state_cache['event__add_reference'] = event
         imgui.set_window_focus_labeled(self.window_name)
 
+    def handle_event__remove_root_reference(self, event):
+        self.state_cache['event__remove_root_reference'] = event
+        imgui.set_window_focus_labeled(self.window_name)
+
     def handle_event__create_node(self, event):
         node = event.get('node')
         node_pos = event.get('node_pos')
@@ -1409,22 +1431,23 @@ class CodeNodeViewer(ImguiComponent):
             return
         ids = [v.id for v in self.node_components]
         selected = self.node_components[ids.index(self.id_selected)]
-        root_node = selected.node.root
-        if root_node is None:
+        if len(selected.node.roots) == 0:
             return
         nodes = [v.node for v in self.node_components]
-        idx = nodes.index(root_node)
-        if self.node_components[idx].snippet_window is not None:
-            self.node_components[idx].snippet_window.reference_info = None
+        for root in selected.node.roots:
+            idx = nodes.index(root)
+            if self.node_components[idx].snippet_window is not None:
+                self.node_components[idx].snippet_window.reference_info = None
 
     def highlight_referenced_lines_in_snippet(self, node_component):
-        root_node = node_component.node.root
-        if root_node is None:
+        if len(node_component.node.roots) == 0:
             return
         nodes = [v.node for v in self.node_components]
-        idx = nodes.index(root_node)
-        if self.node_components[idx].snippet_window is not None:
-            self.node_components[idx].snippet_window.reference_info = node_component.node.ref_info
+        for root in node_component.node.roots:
+            idx = nodes.index(root)
+            if self.node_components[idx].snippet_window is not None:
+                ref_info = node_component.node.ref_infos[root.uuid]
+                self.node_components[idx].snippet_window.reference_info = ref_info
 
     def display_grid(self, draw_list):
         grid_color = imgui.get_color_u32_rgba(0.8, 0.8, 0.8, 0.15)
@@ -1463,7 +1486,7 @@ class CodeNodeViewer(ImguiComponent):
         for link in self.links:
             node_leaf = self.node_components[nodes.index(link.leaf)]
             node_root = self.node_components[nodes.index(link.root)]
-            p1 = offset + node_leaf.get_root_slot_pos()
+            p1 = offset + node_leaf.get_root_slot_pos(link.root_slot)
             p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
             draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
             slot_color = imgui.get_color_u32_rgba(0.75, 0.75, 0.75, 1)
@@ -1559,13 +1582,23 @@ class CodeNodeViewer(ImguiComponent):
         self.handle_panning()
         self.finalize_canvas()
 
-        # Display message to notify user of reference selection
+        # Display message for reference selection
         if self.state_cache.get('event__add_reference', False):
             msg = '(Please select a node to link)'
             cur_pos = Vec2(*imgui.get_cursor_screen_pos())
             win_width = imgui.get_window_width()
-            pos = cur_pos + Vec2(win_width - 340, -20)
-            draw_list.add_text(*pos, imgui.get_color_u32_rgba(1,1,0,1), msg)
+            text_width = len(msg) * CODE_CHAR_WIDTH
+            pos = cur_pos + Vec2(win_width - text_width - 100, -20)
+            draw_list.add_text(*pos, imgui.get_color_u32_rgba(1, 1, 0, 1), msg)
+
+        # Display message for root reference removal
+        if self.state_cache.get('event__remove_root_reference', False):
+            msg = '(Please select a root node to remove)'
+            cur_pos = Vec2(*imgui.get_cursor_screen_pos())
+            win_width = imgui.get_window_width()
+            text_width = len(msg) * CODE_CHAR_WIDTH
+            pos = cur_pos + Vec2(win_width - text_width - 100, -20)
+            draw_list.add_text(*pos, imgui.get_color_u32_rgba(1, 0, 0, 1), msg)
 
         imgui.end_group()
 
@@ -1614,6 +1647,10 @@ class CodeNodeViewer(ImguiComponent):
             self.event_registry.unregister(
                 f'add_reference_##{self.window_id}',
                 self.handle_event__add_reference
+            )
+            self.event_registry.unregister(
+                f'remove_root_reference_##{self.window_id}',
+                self.handle_event__remove_root_reference
             )
             self.event_registry.unregister(
                 f'create_node_##{self.window_id}',

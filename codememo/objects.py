@@ -138,7 +138,7 @@ class Node(object):
         if not isinstance(snippet, Snippet):
             raise TypeError(f'should be an instance of {Snippet}')
 
-        self._ref_info = None
+        self.ref_infos = {}
         self.snippet = snippet
         self.comment = '' if comment is None else comment
         self.uuid = uuid4() if uuid is None else uuid
@@ -148,7 +148,7 @@ class Node(object):
             else:
                 raise TypeError(f'uuid should be an instance of {UUID}')
 
-        self.root = None
+        self.roots = []
         self.leaves = []
 
     def __repr__(self):
@@ -166,35 +166,29 @@ class Node(object):
             'uuid': str(self.uuid),
             'snippet': self.snippet.to_dict(),
             'comment': self.comment,
-            'root': None if self.root is None else str(self.root.uuid),
+            'roots': [str(v.uuid) for v in self.roots],
             'leaves': [str(v.uuid) for v in self.leaves],
-            'ref_info': None if self._ref_info is None else self._ref_info.to_dict(),
+            'ref_infos': {str(k): v.to_dict() for k, v in self.ref_infos.items()},
         }
-
-    @property
-    def ref_info(self):
-        return self._ref_info
-
-    @ref_info.setter
-    def ref_info(self, value):
-        if not isinstance(value, ReferenceInfo):
-            raise TypeError(f'should be an instance of {ReferenceInfo}')
-        self._ref_info = value
 
     def set_root(self, node, ref_start, ref_stop=None):
         if node and not isinstance(node, Node):
             raise TypeError(f'should be an instance of {Node}')
-        self.root = node
-        self.ref_info = ReferenceInfo(ref_start, ref_stop=ref_stop)
+        if node in self.roots:
+            msg = 'Duplicate reference: given node is already an root of this node'
+            raise NodeReferenceException(msg)
+        self.roots.append(node)
+        self.ref_infos[node.uuid] = ReferenceInfo(ref_start, ref_stop=ref_stop)
 
-    def reset_root(self):
+    def reset_root(self, node):
         """Reset root of this node.
 
         Note that this method **does not remove dependency** of root node,
         consider using `remove_leaf()` instead.
         """
-        self.root = None
-        self._ref_info = None
+        idx = self.roots.index(node)
+        popped = self.roots.pop(idx)
+        self.ref_infos.pop(popped.uuid)
 
     def add_leaf(self, node, ref_start=1, ref_stop=None):
         """Add a leaf node referencing to the snippet in this node.
@@ -248,21 +242,6 @@ class Node(object):
         if ref_stop and ref_stop > n_lines:
             msg = f'Reference of stop line should be in the range of [1, {n_lines}]'
             raise ValueError(msg)
-        if node.root is not None:
-            msg = ('Multiple root: Given node is already an leaf of other node.'
-            ' You need to reset its root node first.')
-            raise ValueError(msg)
-        if node is self:
-            msg = 'Self reference: given leaf node is this node itself'
-            raise ValueError(msg)
-
-        # Detect whether there is a circular reference
-        temp_root = self.root
-        while temp_root is not None:
-            if node is temp_root:
-                msg = 'Circular reference: given node is already the root of this node'
-                raise ValueError(msg)
-            temp_root = temp_root.root
 
         node.set_root(self, ref_start, ref_stop=ref_stop)
         self.leaves.append(node)
@@ -275,6 +254,8 @@ class Node(object):
         node : Node
             Leaf node to be removed.
         """
+        if node not in self.leaves:
+            raise NodeRemovalException(f'{node} is not a leaf of this node')
         idx = self.leaves.index(node)
         self.remove_leaf_by_index(idx)
 
@@ -287,7 +268,7 @@ class Node(object):
             Index of leaf node to be removed.
         """
         node = self.leaves.pop(idx)
-        node.reset_root()
+        node.reset_root(self)
 
 
 class NodeLink(object):
@@ -314,7 +295,7 @@ class NodeLink(object):
         ])
 
     def __repr__(self):
-        return f'<NodeLink root: {self.root}; leaf_{self.leaf_slot}: {self.leaf}>'
+        return f'<NodeLink root_{self.root_slot}: {self.root}; leaf_{self.leaf_slot}: {self.leaf}>'
 
 
 class NodeIndexLink(object):
@@ -374,8 +355,6 @@ class NodeCollection(object):
         ref_stop : int, optional
             Optional arguments for `Node.add_leaf()`.
         """
-        if target.root is not None:
-            raise NodeReferenceException('there is already an existing root in target node')
         idx_root = self.nodes.index(root)
         try:
             self.nodes[idx_root].add_leaf(target, ref_start=ref_start, ref_stop=ref_stop)
@@ -400,11 +379,10 @@ class NodeCollection(object):
             )
             raise NodeRemovalException(msg)
         self.nodes.pop(target_index)
-        root = target.root
-        if root is not None:
+        for root in target.roots:
             root.remove_leaf(target)
 
-    def remove_root_reference(self, target):
+    def remove_root_reference(self, target, root):
         """Remove root reference (a.k.a. root node) of given node.
 
         Parameters
@@ -412,31 +390,31 @@ class NodeCollection(object):
         target : Node
             Target node to be removed its root.
         """
-        root = target.root
-        if root is None:
+        if len(target.roots) == 0:
             raise NodeRemovalException(f'given node {target} does not have a root.')
-        idx_root = self.index(root)
-        self.nodes[idx_root].remove_leaf(target)
+        if root not in target.roots:
+            raise NodeRemovalException(f'given root is not a root of this node')
+        root.remove_leaf(target)
 
     def resolve_links(self):
         """Returns list of `NodeLink` objects."""
         links = []
         for node in self.nodes:
             for i, leaf in enumerate(node.leaves):
-                links.append(NodeLink(node, 0, leaf, i))
+                links.append(NodeLink(node, leaf.roots.index(node), leaf, i))
         return links
 
     def resolve_links_from_trees(self, trees):
         """Same as `resolve_links()`, but resolve from given trees which are
-        generated by `resolve_tree()`."""
+        generated by `resolve_trees()`."""
         links = []
         prev_tree_size = 0
         for n, tree in enumerate(trees):
             flattened_tree = [v for layer in tree for v in layer]
-            for idx_root, node in enumerate(flattened_tree):
-                for i, leaf in enumerate(node.leaves):
-                    idx_leaf = flattened_tree.index(leaf)
-                    links.append(NodeLink(node, 0, leaf, i))
+            for node in flattened_tree:
+                for leaf_slot, leaf in enumerate(node.leaves):
+                    root_slot = leaf.roots.index(node)
+                    links.append(NodeLink(node, root_slot, leaf, leaf_slot))
             prev_tree_size = len(flattened_tree)
         return links
 
@@ -444,28 +422,28 @@ class NodeCollection(object):
         """Returns list of `NodeIndexLink` objects."""
         links = []
         for idx_root, node in enumerate(self.nodes):
-            for i, leaf in enumerate(node.leaves):
+            for leaf_slot, leaf in enumerate(node.leaves):
                 idx_leaf = self.nodes.index(leaf)
-                links.append(NodeIndexLink(idx_root, 0, idx_leaf, i))
+                root_slot = leaf.roots.index(node)
+                links.append(NodeIndexLink(idx_root, root_slot, idx_leaf, leaf_slot))
         return links
 
     def resolve_index_links_from_trees(self, trees):
         """Same as `resolve_index_links()`, but resolve from given trees which are
-        generated by `resolve_tree()`."""
+        generated by `resolve_trees()`."""
         links = []
-        prev_tree_size = 0
-        for n, tree in enumerate(trees):
-            flattened_tree = [v for layer in tree for v in layer]
-            for idx_root, node in enumerate(flattened_tree):
-                for i, leaf in enumerate(node.leaves):
-                    idx_leaf = flattened_tree.index(leaf)
-                    links.append(NodeIndexLink(idx_root + prev_tree_size, 0, idx_leaf + prev_tree_size, i))
-            prev_tree_size = len(flattened_tree)
+        flattened_tree = [v for tree in trees for layer in tree for v in layer]
+        for node in flattened_tree:
+            for leaf_slot, leaf in enumerate(node.leaves):
+                idx_leaf = flattened_tree.index(leaf)
+                idx_root = flattened_tree.index(node)
+                root_slot = leaf.roots.index(node)
+                links.append(NodeIndexLink(idx_root, root_slot, idx_leaf, leaf_slot))
         return links
 
-    def resolve_tree(self):
+    def resolve_trees(self):
         """Returns possible **trees** relation and orphan nodes."""
-        def build_tree(node, tree):
+        def build_tree(node, tree, visited):
             """Build a tree starting from given node.
 
             Parameters
@@ -474,6 +452,8 @@ class NodeCollection(object):
                 Entry node to traverse.
             tree : list
                 An container to store traversed nodes.
+            visited : set
+                Visited nodes.
 
             Returns
             -------
@@ -491,13 +471,26 @@ class NodeCollection(object):
             This method returns:
                 [A, [B, C, [D, E]]]
             """
+            if node in visited:
+                return tree
+            else:
+                visited.add(node)
+
             tree.append(node)
             if len(node.leaves) == 0:
                 return tree
 
             subtrees = []
             for leaf in node.leaves:
-                subtrees.append(build_tree(leaf, []))
+                if leaf is node:
+                    subtrees.append([])
+                else:
+                    new_tree = build_tree(leaf, [], visited)
+                    if len(new_tree) != 0:
+                        subtrees.append(new_tree)
+
+            if len(subtrees) == 0:
+                return tree
 
             # Flatten sub_layers
             flattened = [v for sub in subtrees for v in sub]
@@ -534,26 +527,41 @@ class NodeCollection(object):
                     layers[idx_current_layer].append(element)
             return layers
 
-        # Find roots and orphans
-        roots = []
-        orphans = []
-        for idx_root, node in enumerate(self.nodes):
-            if node.root is None:
-                if len(node.leaves) == 0:
-                    orphans.append(node)
-                else:
-                    roots.append(node)
+        def find_roots_and_orphans(nodes, visited):
+            roots, orphans = [], []
+            remainings = set(nodes).difference(visited)
+            for node in remainings:
+                if len(node.roots) == 0:
+                    if len(node.leaves) == 0:
+                        orphans.append(node)
+                    else:
+                        roots.append(node)
+
+            # All nodes are chaining and forming a single circular reference loop,
+            # so that we cannot find a global root node from the loop above. Here
+            # we just pick a node as root.
+            if len(roots) == 0 and len(remainings) != 0:
+                for node in remainings:
+                    if node not in orphans:
+                        roots.append(node)
+                        break
+            return roots, orphans
+
         # Build trees
-        trees = []
-        for root in roots:
-            trees.append(build_tree(root, []))
+        trees, orphan_nodes, visited = [], [], set()
+        while len(visited) != len(self.nodes):
+            roots, orphans = find_roots_and_orphans(self.nodes, visited)
+            visited.update(orphans)
+            orphan_nodes.extend(orphans)
+            for root in roots:
+                trees.append(build_tree(root, [], visited))
 
         # Resolve layers starting from roots
-        layer_collection = []
+        layerized_trees = []
         for tree in trees:
-            layer_collection.append(build_layers(tree, [], 0))
+            layerized_trees.append(build_layers(tree, [], 0))
 
-        return layer_collection, orphans
+        return layerized_trees, orphan_nodes
 
     @classmethod
     def from_dict(cls, data):
@@ -569,11 +577,8 @@ class NodeCollection(object):
             for leaf_uuid in leaves_uuid:
                 target_node = nodes_dict[node_uuid]
                 leaf_node = nodes_dict[leaf_uuid]
-                ref_info = ReferenceInfo.from_dict(data_dict[leaf_uuid]['ref_info'])
+                ref_info = ReferenceInfo.from_dict(data_dict[leaf_uuid]['ref_infos'][node_uuid])
                 target_node.add_leaf(leaf_node, ref_info.start, ref_stop=ref_info.stop)
-
-                # Validate that root of `leaf_node` is current `target_node`
-                assert leaf_node.root is target_node
 
         return cls(list(nodes_dict.values()))
 
