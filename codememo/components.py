@@ -664,6 +664,11 @@ class CodeNodeComponent(ImguiComponent):
         'remove_root_reference': (1, 0, 0, 1),
         '': (0.5, 0.5, 0.5, 1),
     }
+    NODE_BG_COLOR_MAP = {
+        'activated': (0.7, 0.3, 0.3, 1),
+        'root': (0.3, 0.6, 0.3, 1),
+        'normal': (0.25, 0.25, 0.25, 1),
+    }
 
     def __init__(self, app, _id, pos, node, **kwargs):
         """
@@ -808,14 +813,21 @@ class CodeNodeComponent(ImguiComponent):
                 # Window has been closed, so we remove this reference.
                 self.snippet_window = None
 
-        interaction_name = self.process_interaction()
-
         # TODO: for context menu
         self.container.handle_active_node(self, old_any_active)
 
-        node_bg_color = imgui.get_color_u32_rgba(0.7, 0.3, 0.3, 1) if (
-            self.container.check_node_activated(self)
-        ) else imgui.get_color_u32_rgba(0.25, 0.25, 0.25, 1)
+        # Set background color
+        bg_state = 'normal'
+        if self.container.check_node_activated(self):
+            bg_state = 'activated'
+        elif self.container.selected_node is not None:
+            if self.node in self.container.selected_node.node.roots:
+                bg_state = 'root'
+        bg_color_tuple = self.NODE_BG_COLOR_MAP.get(bg_state, 'normal')
+        node_bg_color = imgui.get_color_u32_rgba(*bg_color_tuple)
+
+        # Set foreground color
+        interaction_name = self.process_interaction()
         fg_color_tuple = self.NODE_FG_COLOR_MAP.get(interaction_name, '')
         node_fg_color = imgui.get_color_u32_rgba(*fg_color_tuple)
 
@@ -1052,6 +1064,8 @@ class CodeNodeViewer(ImguiComponent):
     DEFAULT_NODE_LIST_WIDTH = 100.0
     SEARCH_TEXT_MAX_LENGTH = 128
     DEFAULT_NODE_OFFSET_Y = 80
+    NODE_LINK_COLOR_TUPLE = (1, 1, 0, 1)
+    NODE_SLOT_COLOR_TUPLE = (0.75, 0.75, 0.75, 1)
 
     def __init__(self, app, node_collection, fn_src=None):
         """
@@ -1082,6 +1096,7 @@ class CodeNodeViewer(ImguiComponent):
         self.id_selected = -1
         self.id_hovered_in_list = -1
         self.id_hovered_in_scene = -1
+        self.selected_node = None
         self.panning = Vec2(0.0, 0.0)
 
         # NOTE: We should keep node id be auto incremental to prevent dupliate
@@ -1265,11 +1280,16 @@ class CodeNodeViewer(ImguiComponent):
             self.links = self.node_collection.resolve_links()
             if self.id_selected == node_component_id:
                 self.id_selected = -1   # reset index of selected node
+                self.selected_node = None
         except Exception as ex:
             GlobalState().push_error(ex)
 
     def init_canvas(self):
-        imgui.text(f'Hold middle mouse button to pan ({self.panning.x}, {self.panning.y})')
+        imgui.text(f'Offset to origin: ({self.panning.x}, {self.panning.y})  ')
+        imgui.same_line()
+        imgui.text('(?)')
+        if imgui.is_item_hovered():
+            imgui.set_tooltip('Hold middle mouse button to pan canvas')
         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, Vec2(1, 1))
         imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, Vec2(0, 0))
         imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *(0.05, 0.1, 0.15))
@@ -1375,12 +1395,12 @@ class CodeNodeViewer(ImguiComponent):
                 self.reset_dragging_delta()
 
     def handle_selected_node(self, node_component):
+        self.id_selected = node_component.id
+        self.selected_node = node_component
+
         if self.enable_reference_highlight:
             self.reset_highlighted_lines_in_snippet()
-            self.id_selected = node_component.id
             self.highlight_referenced_lines_in_snippet(node_component)
-        else:
-            self.id_selected = node_component.id
 
     def handle_context_menu_canvas(self):
         states = [node.is_showing_context_menu for node in self.node_components]
@@ -1483,6 +1503,9 @@ class CodeNodeViewer(ImguiComponent):
 
         nodes = [v.node for v in self.node_components]
 
+        link_color = imgui.get_color_u32_rgba(*self.NODE_LINK_COLOR_TUPLE)
+        slot_color = imgui.get_color_u32_rgba(*self.NODE_SLOT_COLOR_TUPLE)
+
         # Since angles of arrows are fixed, here we just hard-coded these values
         # in order to reduce calculation
         cos30d, sin30d = 0.8660254037844387, 0.5
@@ -1492,13 +1515,37 @@ class CodeNodeViewer(ImguiComponent):
             node_root = self.node_components[nodes.index(link.root)]
             p1 = offset + node_leaf.get_root_slot_pos(link.root_slot)
             p2 = offset + node_root.get_leaf_slot_pos(link.leaf_slot)
-            draw_list.add_line(*p1, *p2, imgui.get_color_u32_rgba(1, 1, 0, 1))
-            slot_color = imgui.get_color_u32_rgba(0.75, 0.75, 0.75, 1)
+
+            is_self_referenced = node_root is node_leaf
+            if is_self_referenced:
+                top_mid = offset + node_leaf.pos + Vec2(node_leaf.size.x / 2, 0)
+
+                # vector of "top_mid -> p2"
+                v_mid_p2 = p2 - top_mid
+                d = math.sqrt(v_mid_p2.x**2 + v_mid_p2.y**2)
+
+                # unit vector of "top_mid -> p2"
+                u_mid_p2 = v_mid_p2 * (1/d)
+
+                # unit normal vector
+                un_mid_p2 = Vec2(-u_mid_p2.y, u_mid_p2.x)
+
+                p_half = (p2 + top_mid) * 0.5
+                center = p_half - un_mid_p2 * (d/2)
+                r = d / 2**0.5
+                draw_list.add_circle(*center, r, link_color)
+
+                # Replace position of root slot
+                p1 = top_mid
+            else:
+                draw_list.add_line(*p1, *p2, link_color)
+
+            # Draw slots
             draw_list.add_circle_filled(*p1, 4.0, slot_color)
             draw_list.add_circle_filled(*p2, 4.0, slot_color)
 
             # Draw arrows
-            vd = p1 - p2
+            vd = Vec2(0, 1) if is_self_referenced else (p1 - p2)
             d = math.sqrt(vd.x**2 + vd.y**2)
             vd = vd * (8/d)     # length: 8 pixels
             p_arrow = [
@@ -1506,7 +1553,7 @@ class CodeNodeViewer(ImguiComponent):
                 p1 - Vec2(vd.x*cos30d + vd.y*sin30d, -vd.x*sin30d + vd.y*cos30d),
                 p1 - Vec2(vd.x*cos30d - vd.y*sin30d, vd.x*sin30d + vd.y*cos30d),
             ]
-            draw_list.add_polyline(p_arrow, imgui.get_color_u32_rgba(1, 1, 0, 1), closed=True)
+            draw_list.add_polyline(p_arrow, link_color, closed=True)
 
     def display_nodes(self, draw_list, offset):
         for node in self.node_components:
@@ -1549,7 +1596,7 @@ class CodeNodeViewer(ImguiComponent):
         imgui.end_group()
 
     def draw_node_list_search_box(self):
-        imgui.push_item_width(self._node_list_width)
+        imgui.push_item_width(self._node_list_width - 15)
         changed, text = imgui.input_text(
             '##list-search-box', self.search_text, self.SEARCH_TEXT_MAX_LENGTH
         )
@@ -1564,6 +1611,13 @@ class CodeNodeViewer(ImguiComponent):
                 ]
             else:
                 self.filtered_node_components = self.node_components
+
+        imgui.same_line()
+        imgui.set_cursor_pos_x(self._node_list_width - 5)
+        imgui.push_style_color(imgui.COLOR_BUTTON, *(1, 1, 1, 0.1))
+        if imgui.button('X'):
+            self.is_in_search_mode = False
+        imgui.pop_style_color()
 
     def draw_node_canvas(self):
         self.reset_hovered_id_cache()
@@ -1637,7 +1691,7 @@ class CodeNodeViewer(ImguiComponent):
             self.handle_menu_item_show_grid()
             self.handle_menu_item_enable_reference_highlight()
             imgui.end_menu()
-        if imgui.begin_menu('List'):
+        if imgui.begin_menu('Search'):
             self.handle_menu_item_search_list()
             imgui.end_menu()
         imgui.end_menu_bar()
