@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-python -mpytest \
+pytest \
     --cov-config=.coveragerc \
     --cov=codememo \
     ./tests/
