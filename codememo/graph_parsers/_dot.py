@@ -51,8 +51,6 @@ class DotParser(BaseParser):
         nodes = [Node(Snippet(raw_node['id'], '')) for raw_node in raw_nodes]
         node_index_map = {raw_node['id']: i for i, raw_node in enumerate(raw_nodes)}
 
-        multi_root_counter = {}
-
         for raw_link in raw_links:
             idx_src, idx_tgt = node_index_map[raw_link['source']], node_index_map[raw_link['target']]
             src, tgt = nodes[idx_src], nodes[idx_tgt]
