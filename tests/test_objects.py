@@ -73,12 +73,12 @@ def dummy_nodes_multiple_trees():
         ('0_1', 'def bar():\n    print("bar")', 'python'),
         ('0_2', 'def buzz():\n    print("buzz")', 'python'),
         ('0_3', 'def gin():\n    print("gin")', 'python'),
-        ('0_4', 'def fizz():\n    print("fizz")', 'python'),
-        ('1_0', 'def foo():\n    print("foo")', 'python'),
-        ('1_1', 'def bar():\n    print("bar")', 'python'),
-        ('1_2', 'def buzz():\n    print("buzz")', 'python'),
-        ('1_3', 'def gin():\n    print("gin")', 'python'),
-        ('1_4', 'def fizz():\n    print("fizz")', 'python'),
+        ('1_0', 'def fizz():\n    print("fizz")', 'python'),
+        ('2_1', 'def foo():\n    print("foo")', 'python'),
+        ('2_2', 'def bar():\n    print("bar")', 'python'),
+        ('2_3', 'def buzz():\n    print("buzz")', 'python'),
+        ('2_4', 'def gin():\n    print("gin")', 'python'),
+        ('2_5', 'def fizz():\n    print("fizz")', 'python'),
     ]
     snippets = [Snippet(v[0], v[1], lang=v[2]) for v in data]
     nodes = [Node(v) for v in snippets]
@@ -91,7 +91,27 @@ def dummy_nodes_multiple_trees():
     nodes[6].add_leaf(nodes[7])
     nodes[6].add_leaf(nodes[8])
     nodes[7].add_leaf(nodes[9])
-    return nodes
+
+    desired_links = [
+        NodeLink(nodes[0], 0, nodes[1], 0),
+        NodeLink(nodes[0], 0, nodes[2], 1),
+        NodeLink(nodes[2], 0, nodes[3], 0),
+        NodeLink(nodes[5], 0, nodes[6], 0),
+        NodeLink(nodes[6], 0, nodes[7], 0),
+        NodeLink(nodes[6], 0, nodes[8], 1),
+        NodeLink(nodes[7], 0, nodes[9], 0),
+    ]
+
+    desired_index_links = [
+        NodeIndexLink(0, 0, 1, 0),
+        NodeIndexLink(0, 0, 2, 1),
+        NodeIndexLink(2, 0, 3, 0),
+        NodeIndexLink(5, 0, 6, 0),
+        NodeIndexLink(6, 0, 7, 0),
+        NodeIndexLink(6, 0, 8, 1),
+        NodeIndexLink(7, 0, 9, 0),
+    ]
+    return nodes, desired_links, desired_index_links
 
 
 @pytest.fixture
@@ -115,7 +135,25 @@ def dummy_nodes_circular_references():
     nodes[4].add_leaf(nodes[5])
     nodes[5].add_leaf(nodes[6])
     nodes[6].add_leaf(nodes[4])
-    return nodes
+
+    desired_links = [
+        NodeLink(nodes[1], 0, nodes[2], 0),
+        NodeLink(nodes[2], 0, nodes[3], 0),
+        NodeLink(nodes[3], 0, nodes[1], 0),
+        NodeLink(nodes[4], 0, nodes[5], 0),
+        NodeLink(nodes[5], 0, nodes[6], 0),
+        NodeLink(nodes[6], 0, nodes[4], 0),
+    ]
+
+    desired_index_links = [
+        NodeIndexLink(1, 0, 2, 0),
+        NodeIndexLink(2, 0, 3, 0),
+        NodeIndexLink(3, 0, 1, 0),
+        NodeIndexLink(4, 0, 5, 0),
+        NodeIndexLink(5, 0, 6, 0),
+        NodeIndexLink(6, 0, 4, 0),
+    ]
+    return nodes, desired_links, desired_index_links
 
 
 class TestSnippet:
@@ -173,81 +211,127 @@ class TestNode:
         with pytest.raises(ValueError, match='should be in the range'):
             A.add_leaf(B, n_lines + 1)
 
+    def test__remove_leaf(self, dummy_nodes):
+        A, B, C = dummy_nodes[0], dummy_nodes[1], dummy_nodes[2]
+        A.add_leaf(B)
+        A.add_leaf(C)
+
+        assert all([leaf in A.leaves for leaf in [B, C]])
+        A.remove_leaf(C)
+        assert A.leaves == [B]
+        A.remove_leaf(B)
+        assert A.leaves == []
+
+        with pytest.raises(NodeRemovalException, match='not a leaf'):
+            A.remove_leaf(B)
+
 
 class TestNodeCollection:
+    def test__add_leaf_reference(self, dummy_nodes):
+        node_collection = NodeCollection(dummy_nodes)
+        root, leaf = node_collection[0], node_collection[1]
+        ref_start, ref_stop = 1, 2
+        node_collection.add_leaf_reference(root, leaf, ref_start=1, ref_stop=2)
+        assert root in leaf.roots
+        ref_info = leaf.ref_infos[root.uuid]
+        assert (ref_info.start, ref_info.stop) == (ref_start, ref_stop)
+
+    def test__remove_root_reference(self, dummy_nodes_multiple_trees):
+        nodes, *_ = dummy_nodes_multiple_trees
+        node_collection = NodeCollection(nodes)
+        root, leaf_2, leaf_3 = [node_collection[i] for i in [0, 2, 3]]
+        orphan = node_collection[4]
+        assert leaf_2 in root.leaves
+        assert leaf_3 in leaf_2.leaves
+        assert [orphan not in node.leaves for node in [root, leaf_2, leaf_3]]
+
+        assert root in leaf_2.roots
+        node_collection.remove_root_reference(leaf_2, root)
+        assert root not in leaf_2.roots
+
+        with pytest.raises(NodeRemovalException, match='not a root of this node'):
+            node_collection.remove_root_reference(leaf_3, root)
+
+        with pytest.raises(NodeRemovalException, match='does not have a root'):
+            node_collection.remove_root_reference(orphan, root)
+
+    def test__remove_node(self, dummy_nodes_multiple_trees):
+        nodes, *_ = dummy_nodes_multiple_trees
+        node_collection = NodeCollection(nodes)
+        root, leaf_2, leaf_3 = [node_collection[i] for i in [0, 2, 3]]
+        orphan = node_collection[4]
+        assert leaf_2 in root.leaves
+        assert leaf_3 in leaf_2.leaves
+        assert [orphan not in node.leaves for node in [root, leaf_2, leaf_3]]
+
+        node_collection.remove_node(leaf_3)
+        assert leaf_3 not in node_collection
+
+        # `leaf_3` has been removed, so this operation should trigger an exception
+        with pytest.raises(NodeRemovalException, match='does not exist in this collection'):
+            node_collection.remove_node(leaf_3)
+
+        # `root` still has a leaf `leaf_2`
+        with pytest.raises(NodeRemovalException, match='there are remaining leaves'):
+            node_collection.remove_node(root)
+
     def test__to_dict(self, dummy_node_collection_data):
         data = dummy_node_collection_data
         node_collection = NodeCollection.from_dict(data)
         assert node_collection.to_dict() == data
 
     def test__resolve_link__multiple_trees(self, dummy_nodes_multiple_trees):
-        nodes = dummy_nodes_multiple_trees
+        nodes, desired_links, _ = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
         links = node_collection.resolve_links()
-        desired_links = [
-            NodeLink(nodes[0], 0, nodes[1], 0),
-            NodeLink(nodes[0], 0, nodes[2], 1),
-            NodeLink(nodes[2], 0, nodes[3], 0),
-            NodeLink(nodes[5], 0, nodes[6], 0),
-            NodeLink(nodes[6], 0, nodes[7], 0),
-            NodeLink(nodes[6], 0, nodes[8], 1),
-            NodeLink(nodes[7], 0, nodes[9], 0),
-        ]
         assert len(links) == len(desired_links)
         assert all([v in desired_links for v in links])
 
     def test__resolve_link__circular_references(
         self, dummy_nodes_circular_references
     ):
-        nodes = dummy_nodes_circular_references
+        nodes, desired_links, _ = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
         links = node_collection.resolve_links()
-        desired_links = [
-            NodeLink(nodes[1], 0, nodes[2], 0),
-            NodeLink(nodes[2], 0, nodes[3], 0),
-            NodeLink(nodes[3], 0, nodes[1], 0),
-            NodeLink(nodes[4], 0, nodes[5], 0),
-            NodeLink(nodes[5], 0, nodes[6], 0),
-            NodeLink(nodes[6], 0, nodes[4], 0),
-        ]
+        assert len(links) == len(desired_links)
+        assert all([v in desired_links for v in links])
+
+    def test__resolve_link_from_trees__multiple_trees(self, dummy_nodes_multiple_trees):
+        nodes, desired_links, _ = dummy_nodes_multiple_trees
+        node_collection = NodeCollection(nodes)
+        tree, orphans = node_collection.resolve_tree()
+        links = node_collection.resolve_links_from_trees(tree)
+        assert len(links) == len(desired_links)
+        assert all([v in desired_links for v in links])
+
+    def test__resolve_link_from_trees__circular_references(
+        self, dummy_nodes_circular_references
+    ):
+        nodes, desired_links, _ = dummy_nodes_circular_references
+        node_collection = NodeCollection(nodes)
+        tree, orphans = node_collection.resolve_tree()
+        links = node_collection.resolve_links_from_trees(tree)
         assert len(links) == len(desired_links)
         assert all([v in desired_links for v in links])
 
     def test__resolve_index_link__multiple_trees(self, dummy_nodes_multiple_trees):
-        nodes = dummy_nodes_multiple_trees
+        nodes, _, desired_index_links = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
         links = node_collection.resolve_index_links()
-        desired_links = [
-            NodeIndexLink(0, 0, 1, 0),
-            NodeIndexLink(0, 0, 2, 1),
-            NodeIndexLink(2, 0, 3, 0),
-            NodeIndexLink(5, 0, 6, 0),
-            NodeIndexLink(6, 0, 7, 0),
-            NodeIndexLink(6, 0, 8, 1),
-            NodeIndexLink(7, 0, 9, 0),
-        ]
-        assert len(links) == len(desired_links)
-        assert all([v in desired_links for v in links])
+        assert len(links) == len(desired_index_links)
+        assert all([v in desired_index_links for v in links])
 
     def test__resolve_index_link__circular_references(
         self, dummy_nodes_circular_references
     ):
-        nodes = dummy_nodes_circular_references
+        nodes, _, desired_index_links = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
         links = node_collection.resolve_index_links()
-        desired_links = [
-            NodeIndexLink(1, 0, 2, 0),
-            NodeIndexLink(2, 0, 3, 0),
-            NodeIndexLink(3, 0, 1, 0),
-            NodeIndexLink(4, 0, 5, 0),
-            NodeIndexLink(5, 0, 6, 0),
-            NodeIndexLink(6, 0, 4, 0),
-        ]
-        assert len(links) == len(desired_links)
-        assert all([v in desired_links for v in links])
+        assert len(links) == len(desired_index_links)
+        assert all([v in desired_index_links for v in links])
 
     def test__resolve_tree__multiple_trees(self, dummy_nodes_multiple_trees):
-        nodes = dummy_nodes_multiple_trees
+        nodes, *_ = dummy_nodes_multiple_trees
         node_collection = NodeCollection(nodes)
         trees, orphans = node_collection.resolve_tree()
         desired_trees = [
@@ -259,7 +343,7 @@ class TestNodeCollection:
         assert all([tree in desired_trees for tree in trees])
 
     def test__resolve_tree__circular_references(self, dummy_nodes_circular_references):
-        nodes = dummy_nodes_circular_references
+        nodes, *_ = dummy_nodes_circular_references
         node_collection = NodeCollection(nodes)
         trees, orphans = node_collection.resolve_tree()
         desired_trees = [

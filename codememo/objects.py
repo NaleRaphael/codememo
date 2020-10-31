@@ -254,6 +254,8 @@ class Node(object):
         node : Node
             Leaf node to be removed.
         """
+        if node not in self.leaves:
+            raise NodeRemovalException(f'{node} is not a leaf of this node')
         idx = self.leaves.index(node)
         self.remove_leaf_by_index(idx)
 
