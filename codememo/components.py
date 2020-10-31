@@ -945,6 +945,9 @@ class CodeNodeCreatorWindow(ImguiComponent):
         return True
 
     def render(self):
+        if self.container.terminated:
+            self.close()
+
         imgui.begin(self.window_name)
         imgui.set_window_size(300, 400)
 
@@ -1063,6 +1066,7 @@ class CodeNodeViewer(ImguiComponent):
         """
         self.app = app
         self.fn_src = fn_src
+        self.terminated = False
 
         # NOTE: Here we use timestamp as an identifier to prevent data being
         # rendering in the same window if there are multiple viewer windows
@@ -1657,6 +1661,7 @@ class CodeNodeViewer(ImguiComponent):
                 self.handle_event__create_node
             )
             self.event_registry = None
+            self.terminated = True
 
             self.app.remove_component(self)
             self.node_components = []
