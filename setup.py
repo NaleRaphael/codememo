@@ -163,6 +163,7 @@ def setup_package():
         packages=find_packages(exclude=excluded),
         package_dir={'codememo': 'codememo'},
         data_files=data_files,
+        include_package_data=True,
         install_requires=get_requirements(),
         extras_require=EXTRAS_REQUIRE,
         classifiers=[
