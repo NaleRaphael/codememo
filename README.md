@@ -59,6 +59,7 @@ Currently, DOT file for call graph is supported. You can install these dependenc
 
     For non-linux users, `pygraphviz` have to be installed manually since it has to be built with source of `graphviz`. If you don't want to be bothered by those complicated settings, you can simply install it through a forked version provided by Alex Lubbock on Anaconda: `$ conda install pygraphviz -c alubbock`. See also [this comment](https://github.com/pygraphviz/pygraphviz/issues/186#issuecomment-481760487) for further details.
 
+
 ## Usage
 - Launch GUI
     ```bash
@@ -69,3 +70,11 @@ Currently, DOT file for call graph is supported. You can install these dependenc
 ## Note
 - This project is still under development, but please feel free to use it and give us feedback. ;)
 - Configuration files and crash dump files will be stored under the folder `$HOME/.codememo`.
+
+
+## Showcase
+- Create a node and add a reference
+    ![](images/codememo_demo_node_creation.gif)
+
+- Import from call graph
+    ![](images/codememo_demo_import_call_graph.gif)
