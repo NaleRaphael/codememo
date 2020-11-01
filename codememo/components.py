@@ -11,6 +11,7 @@ from .objects import (
     NodeCollection,
 )
 from .events import NodeEvent, NodeEventRegistry
+from .exceptions import NodeRemovalException
 from .internal import GlobalState
 
 CODE_CHAR_WIDTH = 8
@@ -1281,6 +1282,42 @@ class CodeNodeViewer(ImguiComponent):
             if self.id_selected == node_component_id:
                 self.id_selected = -1   # reset index of selected node
                 self.selected_node = None
+        except NodeRemovalException as ex_node_removal:
+            def _remove_node_and_leaves(node_component):
+                uuids = [v.node.uuid for v in self.node_components]
+                removed = self.node_collection.remove_node_and_its_leaves(node_component.node)
+
+                for node in removed:
+                    idx = uuids.index(node.uuid)
+                    self.node_components.pop(idx)
+                    uuids.pop(idx)
+
+                self.links = self.node_collection.resolve_links()
+                self.id_selected = -1
+                self.selected_node = None
+
+            def _remove_node_but_keep_leaves(node_component):
+                node_component.node.remove_all_leaves()
+                self.node_collection.remove_node(node_component.node)
+
+                idx = self.node_components.index(node_component)
+                self.node_components.pop(idx)
+
+                self.links = self.node_collection.resolve_links()
+                if self.id_selected == node_component.id:
+                    self.id_selected = -1
+                    self.selected_node = None
+
+            msg = (
+                'There are still existing leaf nodes, do you want to remove them all?\n' +
+                'Yes: remove all leaves\nNo: keep leaves\nCancel: cancel operation'
+            )
+            self.confirmation_modal = ConfirmationModal(
+                'Confirm', msg,
+                callback_yes=lambda: _remove_node_and_leaves(node_component),
+                callback_no=lambda: _remove_node_but_keep_leaves(node_component),
+                show_cancel_button=True,
+            )
         except Exception as ex:
             GlobalState().push_error(ex)
 

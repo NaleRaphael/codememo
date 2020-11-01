@@ -74,11 +74,11 @@ def dummy_nodes_multiple_trees():
         ('0_2', 'def buzz():\n    print("buzz")', 'python'),
         ('0_3', 'def gin():\n    print("gin")', 'python'),
         ('1_0', 'def fizz():\n    print("fizz")', 'python'),
-        ('2_1', 'def foo():\n    print("foo")', 'python'),
-        ('2_2', 'def bar():\n    print("bar")', 'python'),
-        ('2_3', 'def buzz():\n    print("buzz")', 'python'),
-        ('2_4', 'def gin():\n    print("gin")', 'python'),
-        ('2_5', 'def fizz():\n    print("fizz")', 'python'),
+        ('2_0', 'def foo():\n    print("foo")', 'python'),
+        ('2_1', 'def bar():\n    print("bar")', 'python'),
+        ('2_2', 'def buzz():\n    print("buzz")', 'python'),
+        ('2_3', 'def gin():\n    print("gin")', 'python'),
+        ('2_4', 'def fizz():\n    print("fizz")', 'python'),
     ]
     snippets = [Snippet(v[0], v[1], lang=v[2]) for v in data]
     nodes = [Node(v) for v in snippets]
@@ -197,14 +197,14 @@ class TestNode:
             A.add_leaf(A)
 
     def test__add_leaf__multiple_roots(self, dummy_nodes):
-        A, B, C = dummy_nodes[0], dummy_nodes[1], dummy_nodes[2]
+        A, B, C = dummy_nodes[:3]
         A.add_leaf(B)
         C.add_leaf(B)
         assert A in B.roots
         assert C in B.roots
 
     def test__add_leaf__exceed_range(self, dummy_nodes):
-        A, B = dummy_nodes[0], dummy_nodes[1]
+        A, B = dummy_nodes[:2]
         n_lines = A.snippet.n_lines
         with pytest.raises(ValueError, match='should be in the range'):
             A.add_leaf(B, 0)
@@ -212,7 +212,7 @@ class TestNode:
             A.add_leaf(B, n_lines + 1)
 
     def test__remove_leaf(self, dummy_nodes):
-        A, B, C = dummy_nodes[0], dummy_nodes[1], dummy_nodes[2]
+        A, B, C = dummy_nodes[:3]
         A.add_leaf(B)
         A.add_leaf(C)
 
@@ -225,6 +225,65 @@ class TestNode:
         with pytest.raises(NodeRemovalException, match='not a leaf'):
             A.remove_leaf(B)
 
+    def test__remove_all_leaves(self, dummy_nodes):
+        A, B, C, D = dummy_nodes[:4]
+        A.add_leaf(B)
+        A.add_leaf(C)
+        B.add_leaf(D)
+
+        # Current graph:
+        # A --> B --> D
+        #   \-> C
+        assert all([leaf in A.leaves for leaf in [B, C]])
+        assert D in B.leaves
+
+        A.remove_all_leaves()
+
+        # Current graph:
+        # A     B --> D
+        #       C
+        assert A.leaves == []
+        assert B.roots == [] and B.leaves == [D]
+        assert C.roots == []
+
+    def test__remove_all_leaves__circular_references(self, dummy_nodes):
+        A, B, C, D = dummy_nodes[:4]
+        A.add_leaf(B)
+        B.add_leaf(C)
+        C.add_leaf(D)
+        D.add_leaf(A)
+
+        # Current graph:
+        # -> A --> B --> C --> D -
+        # |----------------------|
+        assert A.leaves == [B] and B.roots == [A]
+        assert B.leaves == [C] and C.roots == [B]
+        assert C.leaves == [D] and D.roots == [C]
+        assert D.leaves == [A] and A.roots == [D]
+
+        # Current graph:
+        # B --> C --> D --> A
+        A.remove_all_leaves()
+        assert B.leaves == [C] and C.roots == [B]
+        assert C.leaves == [D] and D.roots == [C]
+        assert D.leaves == [A] and A.roots == [D]
+        assert A.leaves == []
+
+    def test__remove_all_leaves__self_reference(self, dummy_nodes):
+        A = dummy_nodes[0]
+        A.add_leaf(A)
+
+        # Current graph:
+        # -> A -
+        # |----|
+        assert A.leaves == [A]
+        assert A.roots == [A]
+
+        # Current graph:
+        #    A
+        A.remove_all_leaves()
+        assert A.leaves == []
+        assert A.roots == []
 
 class TestNodeCollection:
     def test__add_leaf_reference(self, dummy_nodes):
@@ -274,6 +333,68 @@ class TestNodeCollection:
         # `root` still has a leaf `leaf_2`
         with pytest.raises(NodeRemovalException, match='there are remaining leaves'):
             node_collection.remove_node(root)
+
+    def test__remove_node_and_its_leaves__multiple_trees(
+        self, dummy_nodes_multiple_trees
+    ):
+        nodes, desired_links, _ = dummy_nodes_multiple_trees
+        node_collection = NodeCollection(nodes)
+
+        node_0_0_to_0_3 = nodes[:4]
+        node_0_0 = nodes[0]
+        links_to_be_removed, remaining_links = desired_links[:3], desired_links[3:]
+        removed = node_collection.remove_node_and_its_leaves(node_0_0)
+        assert set(removed) == set(node_0_0_to_0_3)
+
+        links = node_collection.resolve_links()
+        assert all([removed_link not in links for removed_link in links_to_be_removed])
+        assert len(links) == len(remaining_links)
+        assert all([remaining_link in links for remaining_link in remaining_links])
+
+        node_2_1_to_2_4 = nodes[-4:]
+        node_2_1 = nodes[-4]
+        links_to_be_removed, remaining_links = desired_links[-3:], []
+        removed = node_collection.remove_node_and_its_leaves(node_2_1)
+        assert set(removed) == set(node_2_1_to_2_4)
+
+        # `node_2_1` is a leaf node of `node_2_0`, so the link <2_0, 2_1> will
+        # also be removed after `node_2_1` is removed. Hence that there is no
+        # remaining links now.
+        links = node_collection.resolve_links()
+        assert links == []
+
+    def test__remove_node_and_its_leaves__circular_references(
+        self, dummy_nodes_circular_references
+    ):
+        nodes, desired_links, _ = dummy_nodes_circular_references
+        node_collection = NodeCollection(nodes)
+
+        node_1_0_to_1_2 = nodes[1:4]
+        node_1_0 = nodes[1]
+        links_to_be_removed, remaining_links = desired_links[:3], desired_links[3:]
+        removed = node_collection.remove_node_and_its_leaves(node_1_0)
+        assert set(removed) == set(node_1_0_to_1_2)
+
+        links = node_collection.resolve_links()
+        assert all([removed_link not in links for removed_link in links_to_be_removed])
+        assert len(links) == len(remaining_links)
+        assert all([remaining_link in links for remaining_link in remaining_links])
+
+    def test__remove_node_and_its_leaves__self_reference(self, dummy_nodes):
+        nodes = dummy_nodes
+        A = nodes[0]
+        A.add_leaf(A)
+        assert A.leaves == [A] and A.roots == [A]
+
+        node_collection = NodeCollection([A])
+        links = node_collection.resolve_links()
+        assert links == [NodeLink(A, 0, A, 0)]
+
+        node_collection.remove_node_and_its_leaves(A)
+        assert len(node_collection) == 0
+
+        links = node_collection.resolve_links()
+        assert links == []
 
     def test__to_dict(self, dummy_node_collection_data):
         data = dummy_node_collection_data

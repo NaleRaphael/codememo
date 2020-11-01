@@ -270,6 +270,12 @@ class Node(object):
         node = self.leaves.pop(idx)
         node.reset_root(self)
 
+    def remove_all_leaves(self):
+        """Remove all leaf nodes from this node."""
+        for i in range(len(self.leaves)):
+            current_leaf = self.leaves[0]
+            self.remove_leaf(current_leaf)
+
 
 class NodeLink(object):
     """A link indicates the relation between root and leaf node."""
@@ -381,6 +387,33 @@ class NodeCollection(object):
         self.nodes.pop(target_index)
         for root in target.roots:
             root.remove_leaf(target)
+
+    def remove_node_and_its_leaves(self, target):
+        """Remove node and all its leaves from this collection.
+
+        Parameters
+        ----------
+        target : Node
+            Target node to be removed.
+        """
+        def _remove_node_link(node, removed, visited):
+            if node in visited:
+                return
+            visited.add(node)
+
+            for i in range(len(node.leaves)):
+                current_leaf = node.leaves[0]
+                _remove_node_link(current_leaf, removed, visited)
+
+            for root in node.roots:
+                root.remove_leaf(node)
+            removed.append(node)
+
+        removed, visited = [], set()
+        _remove_node_link(target, removed, visited)
+        for node in removed:
+            self.remove_node(node)
+        return removed
 
     def remove_root_reference(self, target, root):
         """Remove root reference (a.k.a. root node) of given node.
