@@ -78,3 +78,5 @@ Currently, DOT file for call graph is supported. You can install these dependenc
 
 - Import from call graph
     ![](images/codememo_demo_import_call_graph.gif)
+
+    You can also check out `examples/call_graph/` for the approach to generate your own call graph.
